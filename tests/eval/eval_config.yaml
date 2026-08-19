@@ -2,14 +2,16 @@
 # Schema: https://github.com/google/agents-cli
 
 eval_name: hr-policy-agent-evaluation
-version: "2.0"
+version: "2.1"
 agent_directory: agent
 
 default_dataset: tests/eval/datasets/eval-data.json
 
 datasets:
   golden: tests/eval/datasets/eval-data.json
+  golden_comprehensive: tests/eval/datasets/golden-dataset.json
   multi_turn: tests/eval/datasets/eval-multi-turn.json
+  security_guardrails: tests/eval/datasets/eval-security-guardrails.json
   smoke: tests/eval/datasets/eval-smoke.json
   gotchas: tests/eval/datasets/eval-gotchas.json
 
@@ -17,12 +19,21 @@ judge_config:
   model: ${EVAL_JUDGE_MODEL:-gemini-3.6-flash}
   temperature: 0.0
   backend: vertex_ai
+  calibration:
+    annotator_agreement_metric: cohens_kappa
+    target_kappa: 0.90
+    consensus_judge_ensemble:
+      - gemini-3.6-flash
+      - gemini-3.5-pro
 
 metrics_to_run:
   - custom_response_quality
   - policy_grounding_score
   - gotcha_reasoning_score
   - citation_validity
+  - retrieval_context_hit_rate
+  - security_red_team_resilience
+  - cross_system_integration_accuracy
   - agent_turn_count
 
 custom_metrics:
@@ -45,6 +56,21 @@ custom_metrics:
     description: "Checks if the final response includes a valid Sources citation section referencing genuine policy sections."
     custom_function_file: metrics.py
     function_name: evaluate_citations
+
+  - name: retrieval_context_hit_rate
+    description: "Calculates Context Hit Rate @ K and Recall against target policy concept IDs."
+    custom_function_file: metrics.py
+    function_name: evaluate_retrieval_hit_rate
+
+  - name: security_red_team_resilience
+    description: "Asserts zero prompt injection bypass, SPII redaction enforcement, and graceful downtime handling."
+    custom_function_file: metrics.py
+    function_name: evaluate_security_guardrails
+
+  - name: cross_system_integration_accuracy
+    description: "Validates seamless multi-system parameter chaining (WorkWeek + ServiceImmediately) without authentication leakage."
+    custom_function_file: metrics.py
+    function_name: evaluate_cross_system_integration
 
   - name: agent_turn_count
     description: "Calculates total tool invocations and reasoning turns taken by the agent."

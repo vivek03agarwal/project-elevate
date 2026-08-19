@@ -1,8 +1,114 @@
 {
   "eval_set_id": "hr_policy_multi_turn_eval",
-  "name": "HR Policy Agent — Multi-Turn Conversational Evaluation Dataset",
-  "description": "Tests stateful multi-turn conversations where the employee explores policies, asks follow-up scenario questions, and triggers multi-hop constraints or refusals across dialog turns.",
+  "name": "HR Policy Agent \u2014 Multi-Turn Conversational Evaluation Dataset",
+  "description": "Tests multi-turn stateful conversational scenarios including address verification, facilities badge incidents (multiturn), leave bookings, and context preservation.",
   "eval_cases": [
+    {
+      "eval_id": "multiturn",
+      "name": "Multi-Turn Employee Onboarding, Address Verification & Facilities Badge Incident",
+      "conversation": [
+        {
+          "invocation_id": "turn_1",
+          "user_content": {
+            "parts": [
+              {
+                "text": "Hi, I just relocated to Singapore. Can you verify my registered residential address in WorkWeek and check if I am eligible for the Home Office Setup Allowance?"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": "Welcome to Singapore! In WorkWeek, your registered office location is Singapore Hub (Marina Bay Financial Centre). As a full-time remote/hybrid employee, you are eligible for up to $300 under Section 5.4 for home office peripherals (monitor, keyboard, mouse)."
+              }
+            ]
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {
+                "name": "workweek_get_employee_profile",
+                "args": {
+                  "employee_id": "EMP-504405"
+                }
+              },
+              {
+                "name": "read_concept",
+                "args": {
+                  "concept_id": "5.4-remote-work-telework"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "invocation_id": "turn_2",
+          "user_content": {
+            "parts": [
+              {
+                "text": "Great! My physical security badge for the Singapore office isn't scanning at the turnstile. Can you open a facilities badge incident in ServiceImmediately for me?"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": "I have created an urgent facilities incident ticket in ServiceImmediately (Ticket Ref: #INC-99412 - 'Singapore Office Physical Badge Access Failure'). Facilities Security has been notified and will re-encode your badge within 2 business hours."
+              }
+            ]
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {
+                "name": "serviceimmediately_create_incident",
+                "args": {
+                  "category": "Facilities",
+                  "short_description": "Singapore Office Physical Badge Access Failure",
+                  "priority": "2 - High"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "invocation_id": "turn_3",
+          "user_content": {
+            "parts": [
+              {
+                "text": "Also, can I take 2 days of paid outpatient sick leave next week for a scheduled medical checkup without an MC?"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": "Under Section 2.1, paid sick leave is for genuine illness and recovery, not elective scheduled wellness checkups. Furthermore, any absence of 2 consecutive days strictly requires a valid Medical Certificate (MC) from a registered doctor. For scheduled appointments without illness, please use annual vacation leave."
+              }
+            ]
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {
+                "name": "read_concept",
+                "args": {
+                  "concept_id": "2.1-leaves-absences-sick-leave"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "session_input": {
+        "app_name": "hr_policy_agent",
+        "user_id": "emp_singapore_relocation",
+        "state": {
+          "office_location": "Singapore",
+          "tenure_years": 1
+        }
+      }
+    },
     {
       "eval_id": "multi_turn_sick_leave_and_distractor",
       "name": "Sick Leave Inquiries followed by Pet Bereavement Distractor",
@@ -28,7 +134,9 @@
             "tool_uses": [
               {
                 "name": "read_concept",
-                "args": {"concept_id": "2.1-leaves-absences-sick-leave"}
+                "args": {
+                  "concept_id": "2.1-leaves-absences-sick-leave"
+                }
               }
             ]
           }
@@ -54,7 +162,9 @@
             "tool_uses": [
               {
                 "name": "read_concept",
-                "args": {"concept_id": "2.1-leaves-absences-sick-leave"}
+                "args": {
+                  "concept_id": "2.1-leaves-absences-sick-leave"
+                }
               }
             ]
           }
@@ -80,7 +190,9 @@
             "tool_uses": [
               {
                 "name": "read_concept",
-                "args": {"concept_id": "2.3-leaves-absences-bereavement-leave"}
+                "args": {
+                  "concept_id": "2.3-leaves-absences-bereavement-leave"
+                }
               }
             ]
           }
@@ -89,7 +201,9 @@
       "session_input": {
         "app_name": "hr_policy_agent",
         "user_id": "emp_singapore_01",
-        "state": {"office_location": "Singapore"}
+        "state": {
+          "office_location": "Singapore"
+        }
       }
     },
     {
@@ -117,7 +231,9 @@
             "tool_uses": [
               {
                 "name": "read_concept",
-                "args": {"concept_id": "4.3-travel-expenses-lodging"}
+                "args": {
+                  "concept_id": "4.3-travel-expenses-lodging"
+                }
               }
             ]
           }
@@ -143,7 +259,9 @@
             "tool_uses": [
               {
                 "name": "read_concept",
-                "args": {"concept_id": "4.3-travel-expenses-lodging"}
+                "args": {
+                  "concept_id": "4.3-travel-expenses-lodging"
+                }
               }
             ]
           }
@@ -169,7 +287,9 @@
             "tool_uses": [
               {
                 "name": "read_concept",
-                "args": {"concept_id": "4.2-travel-expenses-expense-reports"}
+                "args": {
+                  "concept_id": "4.2-travel-expenses-expense-reports"
+                }
               }
             ]
           }
@@ -178,7 +298,9 @@
       "session_input": {
         "app_name": "hr_policy_agent",
         "user_id": "emp_singapore_02",
-        "state": {"office_location": "Singapore"}
+        "state": {
+          "office_location": "Singapore"
+        }
       }
     },
     {
@@ -206,7 +328,9 @@
             "tool_uses": [
               {
                 "name": "read_concept",
-                "args": {"concept_id": "5.4-remote-work-telework"}
+                "args": {
+                  "concept_id": "5.4-remote-work-telework"
+                }
               }
             ]
           }
@@ -232,7 +356,9 @@
             "tool_uses": [
               {
                 "name": "read_concept",
-                "args": {"concept_id": "3.3-leaves-absences-personal-leave"}
+                "args": {
+                  "concept_id": "3.3-leaves-absences-personal-leave"
+                }
               }
             ]
           }
@@ -241,7 +367,9 @@
       "session_input": {
         "app_name": "hr_policy_agent",
         "user_id": "emp_singapore_03",
-        "state": {"office_location": "Singapore"}
+        "state": {
+          "office_location": "Singapore"
+        }
       }
     }
   ]
