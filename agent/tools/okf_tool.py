@@ -2,11 +2,30 @@
 
 The agent uses these to *navigate* the Open Knowledge Format bundle in knowledge/:
 first list what concepts exist, then read the most relevant one. No vector DB.
-
-You implement two functions. Keep the return shapes exactly as documented — the
-prompt and the agent rely on them.
 """
+import os
+import re
+import yaml
+
 from .. import config  # config.KNOWLEDGE_DIR points at the knowledge/ bundle
+
+FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n?(.*)$", re.DOTALL)
+RESERVED = {"index.md", "log.md"}
+
+
+def _parse_file(filepath: str):
+    """Parse YAML frontmatter and body from a markdown file."""
+    with open(filepath, "r", encoding="utf-8") as f:
+        text = f.read()
+    m = FRONTMATTER_RE.match(text)
+    if not m:
+        return {}, text
+    try:
+        data = yaml.safe_load(m.group(1)) or {}
+    except yaml.YAMLError:
+        data = {}
+    body = m.group(2)
+    return data, body
 
 
 def list_concepts() -> dict:
@@ -15,20 +34,24 @@ def list_concepts() -> dict:
     Returns:
         {"concepts": [{"id": str, "title": str, "description": str}, ...]}
         where `id` is the concept path without the .md suffix,
-        e.g. "leave/bereavement-leave".
+        e.g. "01-paid-time-off-leave-operations/1.2-paid-vacation-leave-singapore".
     """
-    # TODO(you): walk config.KNOWLEDGE_DIR for *.md files, SKIP the reserved
-    #   files index.md and log.md, parse each file's YAML frontmatter, and return
-    #   its id/title/description.
-    #
-    # HINT: a concept id is the path relative to KNOWLEDGE_DIR minus ".md".
-    #       Use os.walk + PyYAML (yaml.safe_load) on the block between the first
-    #       two "---" lines. See knowledge/check_okf.py for a frontmatter parser.
-    #
-    # Suggested coding-agent prompt:
-    #   "Implement list_concepts(): os.walk config.KNOWLEDGE_DIR, skip index.md and
-    #    log.md, parse YAML frontmatter, return {'concepts': [{id,title,description}]}."
-    raise NotImplementedError("Implement list_concepts()")
+    concepts = []
+    knowledge_dir = os.path.abspath(config.KNOWLEDGE_DIR)
+    for dirpath, _dirs, files in os.walk(knowledge_dir):
+        for name in sorted(files):
+            if not name.endswith(".md") or name in RESERVED:
+                continue
+            full_path = os.path.join(dirpath, name)
+            rel_path = os.path.relpath(full_path, knowledge_dir)
+            concept_id = os.path.splitext(rel_path)[0]
+            data, _ = _parse_file(full_path)
+            concepts.append({
+                "id": concept_id,
+                "title": data.get("title", concept_id),
+                "description": data.get("description", ""),
+            })
+    return {"concepts": concepts}
 
 
 def read_concept(concept_id: str) -> dict:
@@ -42,17 +65,44 @@ def read_concept(concept_id: str) -> dict:
         where `content` is the markdown body (after the frontmatter) and
         `resource` is the frontmatter `source` (or `resource`) reference if present.
     """
-    # TODO(you): map concept_id -> config.KNOWLEDGE_DIR/<concept_id>.md, read it,
-    #   split frontmatter from body, and return the body + title + source.
-    #
-    # HINT: a concept_id is the path under knowledge/ minus ".md", e.g.
-    #       "03-other-compassionate-unpaid-leaves/3.1-bereavement-leave-global" ->
-    #       os.path.join(KNOWLEDGE_DIR, "03-...", "3.1-...global.md"). Guard against
-    #       paths that escape the bundle. Return a helpful message if it doesn't exist.
-    #       Concept frontmatter uses a `source:` field (the handbook section) for citations.
-    #
-    # Suggested coding-agent prompt:
-    #   "Implement read_concept(concept_id): resolve to KNOWLEDGE_DIR/<id>.md,
-    #    parse YAML frontmatter, return {'content','title','resource'} (resource from
-    #    the frontmatter `source` field)."
-    raise NotImplementedError("Implement read_concept()")
+    knowledge_dir = os.path.abspath(config.KNOWLEDGE_DIR)
+    if not concept_id:
+        return {
+            "error": "concept_id is required",
+            "content": "",
+            "title": "",
+            "resource": None,
+        }
+
+    # Normalize concept_id (strip leading slash, trailing .md)
+    clean_id = concept_id.lstrip("/\\")
+    if clean_id.endswith(".md"):
+        clean_id = clean_id[:-3]
+
+    target_path = os.path.abspath(os.path.join(knowledge_dir, f"{clean_id}.md"))
+
+    # Guard against path traversal
+    if not target_path.startswith(knowledge_dir + os.sep) and target_path != knowledge_dir:
+        return {
+            "error": f"Invalid concept_id '{concept_id}': path traversal detected.",
+            "content": "",
+            "title": "",
+            "resource": None,
+        }
+
+    if not os.path.isfile(target_path):
+        return {
+            "error": f"Concept '{concept_id}' not found.",
+            "content": "",
+            "title": "",
+            "resource": None,
+        }
+
+    data, body = _parse_file(target_path)
+    title = data.get("title", "")
+    resource = data.get("source") or data.get("resource")
+    return {
+        "content": body,
+        "title": title,
+        "resource": resource,
+    }

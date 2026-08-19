@@ -12,10 +12,11 @@ Run it:
 import asyncio
 import sys
 
-from google.adk.agents import LlmAgent  # noqa: F401  (used in the TODO block)
-
 from . import config
 from .prompt import POLICY_AGENT_PROMPT
+
+from google.adk.agents import LlmAgent  # noqa: F401  (used in the TODO block)
+
 
 
 # ---------------------------------------------------------------------------
@@ -53,7 +54,13 @@ def select_tools(mode: str):
 #    config.GEMINI_MODEL, POLICY_AGENT_PROMPT as the instruction, and
 #    select_tools(config.RETRIEVAL_MODE) as its tools. Assign it to root_agent."
 # ===========================================================================
-root_agent = None  # <-- replace this with your LlmAgent(...)
+root_agent = LlmAgent(
+    model=config.GEMINI_MODEL,
+    name="hr_policy_agent",
+    description="Altostrat Singapore HR Policy Assistant answering questions grounded in the employee handbook.",
+    instruction=POLICY_AGENT_PROMPT,
+    tools=select_tools(config.RETRIEVAL_MODE),
+)
 
 
 # ---------------------------------------------------------------------------

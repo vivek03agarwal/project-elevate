@@ -1,9 +1,14 @@
-"""Configuration for the HR Policy Agent (given — you don't need to edit this)."""
 import os
-
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=True)
+
+# Force-clear Vertex AI environment variables if GEMINI_API_KEY is present
+if os.getenv("GEMINI_API_KEY"):
+    for k in ["GOOGLE_GENAI_USE_VERTEXAI", "GOOGLE_CLOUD_PROJECT", "GOOGLE_CLOUD_LOCATION"]:
+        os.environ.pop(k, None)
+
+
 
 # --- Model ---------------------------------------------------------------
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")

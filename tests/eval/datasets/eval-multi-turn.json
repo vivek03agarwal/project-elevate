@@ -1,0 +1,248 @@
+{
+  "eval_set_id": "hr_policy_multi_turn_eval",
+  "name": "HR Policy Agent — Multi-Turn Conversational Evaluation Dataset",
+  "description": "Tests stateful multi-turn conversations where the employee explores policies, asks follow-up scenario questions, and triggers multi-hop constraints or refusals across dialog turns.",
+  "eval_cases": [
+    {
+      "eval_id": "multi_turn_sick_leave_and_distractor",
+      "name": "Sick Leave Inquiries followed by Pet Bereavement Distractor",
+      "conversation": [
+        {
+          "invocation_id": "turn_1",
+          "user_content": {
+            "parts": [
+              {
+                "text": "How many days of paid outpatient sick leave do I get per year in Singapore, and what is the hospitalisation leave allowance?"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": "Full-time employees in Singapore with at least 6 months of service are entitled to up to 14 days of paid outpatient sick leave and up to 60 days of paid hospitalisation leave (which includes the 14 days of outpatient sick leave) per calendar year under Section 2.1."
+              }
+            ]
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {
+                "name": "read_concept",
+                "args": {"concept_id": "2.1-leaves-absences-sick-leave"}
+              }
+            ]
+          }
+        },
+        {
+          "invocation_id": "turn_2",
+          "user_content": {
+            "parts": [
+              {
+                "text": "If I am sick for 2 consecutive work days with a fever, is an MC required to take this sick leave?"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": "Yes. While Section 2.1 allows single-day non-consecutive absences without an MC up to 2 times per calendar year, any sick leave of 2 or more consecutive days strictly requires a valid Medical Certificate (MC) from a registered medical practitioner."
+              }
+            ]
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {
+                "name": "read_concept",
+                "args": {"concept_id": "2.1-leaves-absences-sick-leave"}
+              }
+            ]
+          }
+        },
+        {
+          "invocation_id": "turn_3",
+          "user_content": {
+            "parts": [
+              {
+                "text": "My golden retriever passed away this morning after 12 years. Can I take 3 days of paid compassionate bereavement leave for this?"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": "I am very sorry for your loss. However, under Altostrat's Bereavement Leave policy (Section 2.3), paid compassionate leave is strictly reserved for the death of immediate family members (spouse, children, parents, siblings, grandparents, or parents-in-law). It does not extend to pets. You may discuss using accrued annual vacation or unpaid personal leave with your manager."
+              }
+            ]
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {
+                "name": "read_concept",
+                "args": {"concept_id": "2.3-leaves-absences-bereavement-leave"}
+              }
+            ]
+          }
+        }
+      ],
+      "session_input": {
+        "app_name": "hr_policy_agent",
+        "user_id": "emp_singapore_01",
+        "state": {"office_location": "Singapore"}
+      }
+    },
+    {
+      "eval_id": "multi_turn_travel_expense_and_aged_claims",
+      "name": "Travel Expense Gotchas and Aged Claim Escalation Flow",
+      "conversation": [
+        {
+          "invocation_id": "turn_1",
+          "user_content": {
+            "parts": [
+              {
+                "text": "I'm staying at my cousin's house on an official business trip instead of booking a hotel. Can I buy them a $45 Starbucks gift card as a host thank-you gift and claim reimbursement in Concur?"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": "No. While Section 4.3 permits a Host Gift allowance of up to $50 per stay when staying with friends or family in lieu of commercial lodging, Section 4.1 and Section 4.5 explicitly prohibit the reimbursement of gift cards, prepaid vouchers, and cash equivalents under all circumstances."
+              }
+            ]
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {
+                "name": "read_concept",
+                "args": {"concept_id": "4.3-travel-expenses-lodging"}
+              }
+            ]
+          }
+        },
+        {
+          "invocation_id": "turn_2",
+          "user_content": {
+            "parts": [
+              {
+                "text": "What if I purchase a $45 gourmet fruit & chocolate gift basket instead?"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": "Yes, a tangible gift such as a gourmet fruit & chocolate basket for $45 is reimbursable under the Host Gift policy (Section 4.3), as it is below the $50 cap and is not a gift card or cash equivalent. Please ensure you obtain an itemized receipt for Concur submission."
+              }
+            ]
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {
+                "name": "read_concept",
+                "args": {"concept_id": "4.3-travel-expenses-lodging"}
+              }
+            ]
+          }
+        },
+        {
+          "invocation_id": "turn_3",
+          "user_content": {
+            "parts": [
+              {
+                "text": "I also have an old taxi receipt for $60 from a business trip 75 days ago. Can my direct manager approve this in Concur?"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": "No, direct manager approval is not sufficient. Under Section 4.2 (Expense Report Timing & Approvals), expense claims submitted between 61 and 90 days after the expense date require Director-level approval. Because this receipt is 75 days old, it must be routed to your Director for approval."
+              }
+            ]
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {
+                "name": "read_concept",
+                "args": {"concept_id": "4.2-travel-expenses-expense-reports"}
+              }
+            ]
+          }
+        }
+      ],
+      "session_input": {
+        "app_name": "hr_policy_agent",
+        "user_id": "emp_singapore_02",
+        "state": {"office_location": "Singapore"}
+      }
+    },
+    {
+      "eval_id": "multi_turn_remote_security_and_unpaid_leave",
+      "name": "Remote Work Confidentiality and Multi-Hop Unpaid Leave Flow",
+      "conversation": [
+        {
+          "invocation_id": "turn_1",
+          "user_content": {
+            "parts": [
+              {
+                "text": "I am approved for full remote work. Can I work on our confidential Project Titan codebase from a local Starbucks coffee shop if I use headphones and a privacy filter screen?"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": "No. Under Section 5.4 and Section 6.1 (Information Security & Confidentiality), employees are strictly prohibited from working on confidential or proprietary projects in public settings (including coffee shops, cafes, and public libraries), regardless of whether privacy screens or headphones are used."
+              }
+            ]
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {
+                "name": "read_concept",
+                "args": {"concept_id": "5.4-remote-work-telework"}
+              }
+            ]
+          }
+        },
+        {
+          "invocation_id": "turn_2",
+          "user_content": {
+            "parts": [
+              {
+                "text": "I have been at Altostrat for 3 years with a 'Significant Impact' rating. I want to take 45 days of continuous unpaid personal leave, but I still have 15 days of accrued vacation. Can my direct manager approve this today?"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": "No, direct manager approval alone is not sufficient. Under Section 3.3, unpaid leave exceeding 30 days is classified as Personal Leave (up to 92 continuous days) and requires approval from both your Manager AND your Director. Furthermore, policy mandates that employees must exhaust their vacation balance down to fewer than 10 days before unpaid personal leave can be approved. With 15 vacation days remaining, you must first utilize 6 vacation days."
+              }
+            ]
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {
+                "name": "read_concept",
+                "args": {"concept_id": "3.3-leaves-absences-personal-leave"}
+              }
+            ]
+          }
+        }
+      ],
+      "session_input": {
+        "app_name": "hr_policy_agent",
+        "user_id": "emp_singapore_03",
+        "state": {"office_location": "Singapore"}
+      }
+    }
+  ]
+}

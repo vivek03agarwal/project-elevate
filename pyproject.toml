@@ -10,6 +10,7 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "pyyaml",
     "pypdf",
+    "absl-py>=2.5.0",
 ]
 
 [project.optional-dependencies]

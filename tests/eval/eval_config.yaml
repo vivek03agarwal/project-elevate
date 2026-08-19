@@ -1,0 +1,55 @@
+# HR Policy Agent — agents-cli Evaluation Configuration
+# Schema: https://github.com/google/agents-cli
+
+eval_name: hr-policy-agent-evaluation
+version: "2.0"
+agent_directory: agent
+
+default_dataset: tests/eval/datasets/eval-data.json
+
+datasets:
+  golden: tests/eval/datasets/eval-data.json
+  multi_turn: tests/eval/datasets/eval-multi-turn.json
+  smoke: tests/eval/datasets/eval-smoke.json
+  gotchas: tests/eval/datasets/eval-gotchas.json
+
+judge_config:
+  model: ${EVAL_JUDGE_MODEL:-gemini-3.6-flash}
+  temperature: 0.0
+  backend: vertex_ai
+
+metrics_to_run:
+  - custom_response_quality
+  - policy_grounding_score
+  - gotcha_reasoning_score
+  - citation_validity
+  - agent_turn_count
+
+custom_metrics:
+  - name: custom_response_quality
+    description: "LLM-as-judge scoring based on the comprehensive 5-dimension rubric in evals/RUBRICS.md (Correctness, Grounding, Reasoning, Abstention, Citation)."
+    custom_function_file: metrics.py
+    function_name: evaluate_response_quality
+
+  - name: policy_grounding_score
+    description: "Verifies that every substantive claim is grounded in retrieved OKF concept markdown or RAG chunks."
+    custom_function_file: metrics.py
+    function_name: evaluate_grounding
+
+  - name: gotcha_reasoning_score
+    description: "Evaluates whether the agent catches negative rule prohibitions, multi-hop constraints, or seniority hierarchies."
+    custom_function_file: metrics.py
+    function_name: evaluate_reasoning
+
+  - name: citation_validity
+    description: "Checks if the final response includes a valid Sources citation section referencing genuine policy sections."
+    custom_function_file: metrics.py
+    function_name: evaluate_citations
+
+  - name: agent_turn_count
+    description: "Calculates total tool invocations and reasoning turns taken by the agent."
+    custom_function: |
+      def evaluate(instance):
+          turns = (instance.get("agent_data") or {}).get("turns", [])
+          tool_uses = (instance.get("agent_data") or {}).get("tool_uses", [])
+          return {'score': len(turns) + len(tool_uses)}

@@ -1,0 +1,289 @@
+{
+  "eval_set_id": "hr_policy_gotchas_eval",
+  "name": "HR Policy Agent \u2014 Gotchas & Prohibitions Dataset",
+  "description": "Targeted negative constraints, multi-hop rules, and compliance trap cases.",
+  "eval_cases": [
+    {
+      "eval_case_id": "host_gift_card_gotcha",
+      "prompt": {
+        "role": "user",
+        "parts": [
+          {
+            "text": "I'm staying at my cousin's house on a work trip instead of a hotel. As a thank-you I want to buy him a $45 gift card and expense it. Is that allowed?"
+          }
+        ]
+      },
+      "reference": {
+        "response": {
+          "role": "model",
+          "parts": [
+            {
+              "text": "Host gifts up to US$50/day are allowed WITH receipts, BUT cash and gift cards are prohibited as host gifts (and as business courtesies) regardless of amount. Therefore a $45 gift card is NOT allowed \u2014 the $50/day limit is irrelevant because gift cards are a prohibited category."
+            }
+          ]
+        }
+      },
+      "criteria": {
+        "dimensions": [
+          "correctness",
+          "grounding",
+          "reasoning",
+          "citation"
+        ],
+        "expected_sources": [
+          "4.3",
+          "5.2",
+          "14.2"
+        ],
+        "gotcha": "A value under a spending limit does not make a prohibited category allowed.",
+        "smoke": true
+      }
+    },
+    {
+      "eval_case_id": "room_salon_gotcha",
+      "prompt": {
+        "role": "user",
+        "parts": [
+          {
+            "text": "I want to take a prospective client to a room salon to celebrate a contract. It's $80 per person, and since that's under $100 I assume I don't need manager approval. Correct?"
+          }
+        ]
+      },
+      "reference": {
+        "response": {
+          "role": "model",
+          "parts": [
+            {
+              "text": "Adult entertainment (strip clubs, hostess bars, room salons) is a prohibited business courtesy regardless of value. The 'under US$100 => no approval needed' tier applies only to otherwise-permitted courtesies, so it does NOT make a room salon acceptable. Conclusion: prohibited."
+            }
+          ]
+        }
+      },
+      "criteria": {
+        "dimensions": [
+          "correctness",
+          "grounding",
+          "reasoning",
+          "citation"
+        ],
+        "expected_sources": [
+          "5.2",
+          "13.4",
+          "14.2"
+        ],
+        "gotcha": "The approval threshold applies only to permitted courtesies; adult entertainment is prohibited outright.",
+        "smoke": false
+      }
+    },
+    {
+      "eval_case_id": "pet_bereavement_distractor",
+      "prompt": {
+        "role": "user",
+        "parts": [
+          {
+            "text": "My golden retriever passed away this morning after 12 years with our family. How many days of paid bereavement leave can I log in WorkWeek?"
+          }
+        ]
+      },
+      "reference": {
+        "response": {
+          "role": "model",
+          "parts": [
+            {
+              "text": "Paid bereavement leave is up to 4 weeks (20 work days) for close loved ones or pregnancy loss. However, Section 3.1 explicitly states: 'Paid bereavement leave does not apply to pet loss.' The employee is entitled to 0 days of paid bereavement leave and must use vacation, unpaid time off, or flexible schedules instead."
+            }
+          ]
+        }
+      },
+      "criteria": {
+        "dimensions": [
+          "correctness",
+          "grounding",
+          "reasoning",
+          "citation"
+        ],
+        "expected_sources": [
+          "3.1",
+          "22.2"
+        ],
+        "gotcha": "Semantic keyword match returns 4 weeks for human loved ones, but pet loss is explicitly excluded from paid bereavement leave.",
+        "smoke": true
+      }
+    },
+    {
+      "eval_case_id": "group_meal_seniority_trap",
+      "prompt": {
+        "role": "user",
+        "parts": [
+          {
+            "text": "I am an L4 Software Engineer. I attended a project celebration dinner costing $85 per person with my L5 Tech Lead, my L6 Manager, and our L7 Director. Can I pay the bill with my Corporate Card and submit the Concur expense report for reimbursement?"
+          }
+        ]
+      },
+      "reference": {
+        "response": {
+          "role": "model",
+          "parts": [
+            {
+              "text": "While $85 is under the $120/person daily group meal cap, Section 4.4 explicitly dictates: 'The most senior colleague present (highest level) must pay and submit the expense to ensure independent manager approval.' Since an L7 Director was present, the L4 engineer cannot submit the expense report; the L7 Director must pay and submit."
+            }
+          ]
+        }
+      },
+      "criteria": {
+        "dimensions": [
+          "correctness",
+          "grounding",
+          "reasoning",
+          "citation"
+        ],
+        "expected_sources": [
+          "4.4",
+          "04"
+        ],
+        "gotcha": "The dollar amount ($85) is under the $120 cap, but the submission hierarchy requires the most senior person present to pay and submit.",
+        "smoke": false
+      }
+    },
+    {
+      "eval_case_id": "unpaid_personal_leave_multihop",
+      "prompt": {
+        "role": "user",
+        "parts": [
+          {
+            "text": "I have been at Altostrat for 3 years, received a 'Significant Impact' GRAD rating, and want to take 45 days of continuous unpaid personal leave. I currently have 15 days of accrued vacation remaining in my balance. Can my direct manager approve this unpaid leave today?"
+          }
+        ]
+      },
+      "reference": {
+        "response": {
+          "role": "model",
+          "parts": [
+            {
+              "text": "Unpaid time off exceeding 30 days is reclassified as Personal Leave (up to 92 continuous days). Personal leave requires approval from both Manager AND Director (so direct manager approval alone is insufficient). Furthermore, the handbook specifies that employees should have fewer than 10 vacation days remaining before unpaid personal leave is approved. With 15 vacation days left, the employee must utilize vacation days first."
+            }
+          ]
+        }
+      },
+      "criteria": {
+        "dimensions": [
+          "correctness",
+          "grounding",
+          "reasoning",
+          "citation"
+        ],
+        "expected_sources": [
+          "3.3",
+          "18.2"
+        ],
+        "gotcha": "Multi-condition synthesis: leaves >30 days reclassify as Personal Leave (requires Director approval), and remaining vacation must be fewer than 10 days.",
+        "smoke": false
+      }
+    },
+    {
+      "eval_case_id": "aged_expense_approval_level",
+      "prompt": {
+        "role": "user",
+        "parts": [
+          {
+            "text": "I found an out-of-pocket taxi receipt for $60 from a business trip 75 days ago. My direct manager is happy to approve it in Concur. Is direct manager approval sufficient for this reimbursement?"
+          }
+        ]
+      },
+      "reference": {
+        "response": {
+          "role": "model",
+          "parts": [
+            {
+              "text": "Normal travel expenses require direct manager approval. However, Section 4.2 dictates that out-of-pocket expense claims older than 60 days require Director approval (and claims older than 90 days require VP approval). Since the claim is 75 days old, direct manager approval is NOT sufficient; Director approval is required."
+            }
+          ]
+        }
+      },
+      "criteria": {
+        "dimensions": [
+          "correctness",
+          "grounding",
+          "reasoning",
+          "citation"
+        ],
+        "expected_sources": [
+          "4.2",
+          "04"
+        ],
+        "gotcha": "Aged expenses override the normal approval workflow based on transaction age.",
+        "smoke": false
+      }
+    },
+    {
+      "eval_case_id": "shared_parental_leave_father_deduction",
+      "prompt": {
+        "role": "user",
+        "parts": [
+          {
+            "text": "My wife and I both work at Altostrat in Singapore. We just welcomed a newborn. If I (the father) allocate 2 weeks of my Shared Parental Leave to my wife, how many weeks of Baby Bonding Leave do I receive?"
+          }
+        ]
+      },
+      "reference": {
+        "response": {
+          "role": "model",
+          "parts": [
+            {
+              "text": "Baby Bonding Leave is 18 weeks. Section 26.3 (Singapore Shared Parental Leave Scenarios, effective April 1, 2026) is the governing Singapore-specific rule: when both parents are Altostrat employees, the father's Baby Bonding Leave remains 18 weeks and is NOT reduced by the SPL sharing arrangement. Therefore the father still receives 18 weeks. (The older global Section 2.2 mentions a 16-17 week reduction, but the Singapore-specific 26.3 governs here and applies no reduction.)"
+            }
+          ]
+        }
+      },
+      "criteria": {
+        "dimensions": [
+          "correctness",
+          "grounding",
+          "reasoning",
+          "citation"
+        ],
+        "expected_sources": [
+          "26.3"
+        ],
+        "gotcha": "Don't assume donating SPL costs the father Baby Bonding Leave: for Singapore, when both parents are Altostrat employees, the father's BBL is NOT reduced by an SPL allocation.",
+        "smoke": false
+      }
+    },
+    {
+      "eval_case_id": "remote_confidential_public_place",
+      "prompt": {
+        "role": "user",
+        "parts": [
+          {
+            "text": "I am approved for full remote work. Can I work on our confidential Project Titan codebase from a local Starbucks coffee shop as long as I use headphones and a privacy screen?"
+          }
+        ]
+      },
+      "reference": {
+        "response": {
+          "role": "model",
+          "parts": [
+            {
+              "text": "Section 5.4 and Section 6.1 explicitly state: 'Employees must not work on Altostrat confidential or proprietary company projects in public settings (such as coffee shops or public libraries).' While headphones and privacy screens are required for remote work in general, working on confidential projects in public places like Starbucks is strictly prohibited."
+            }
+          ]
+        }
+      },
+      "criteria": {
+        "dimensions": [
+          "correctness",
+          "grounding",
+          "reasoning",
+          "citation"
+        ],
+        "expected_sources": [
+          "5.4",
+          "6.1",
+          "16.2"
+        ],
+        "gotcha": "Privacy measures (headphones, screen) apply away from the office, but confidential projects are strictly banned in public settings regardless of accessories.",
+        "smoke": false
+      }
+    }
+  ]
+}
