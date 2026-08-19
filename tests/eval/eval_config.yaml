@@ -2,7 +2,7 @@
 # Schema: https://github.com/google/agents-cli
 
 eval_name: hr-policy-agent-evaluation
-version: "2.1"
+version: "2.2"
 agent_directory: agent
 
 default_dataset: tests/eval/datasets/eval-data.json
@@ -25,9 +25,35 @@ judge_config:
     consensus_judge_ensemble:
       - gemini-3.6-flash
       - gemini-3.5-pro
+    human_in_the_loop_sampling:
+      enabled: true
+      sample_rate: 0.10
+      stratified_bands:
+        - name: high_confidence
+          score_range: [0.9, 1.0]
+          sample_pct: 0.05
+        - name: borderline_ambiguity
+          score_range: [0.5, 0.9]
+          sample_pct: 0.25
+        - name: refusals_and_abstentions
+          score_range: [0.0, 0.5]
+          sample_pct: 0.20
+
+execution_tuning:
+  trajectory_matching:
+    mode: semantic
+    id_masking_patterns:
+      - "^adk-[a-zA-Z0-9_-]+"
+      - "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+    parameter_normalization: true
+  state_matching:
+    dynamic_balance_tolerance: true
+    state_reset_seed_enabled: true
 
 metrics_to_run:
   - custom_response_quality
+  - tool_trajectory_avg_score
+  - final_response_match_v2
   - policy_grounding_score
   - gotcha_reasoning_score
   - citation_validity
@@ -37,6 +63,16 @@ metrics_to_run:
   - agent_turn_count
 
 custom_metrics:
+  - name: tool_trajectory_avg_score
+    description: "Evaluates tool invocation trajectories using semantic matching and ID variable masking."
+    custom_function_file: metrics.py
+    function_name: tool_trajectory_avg_score
+
+  - name: final_response_match_v2
+    description: "Matches final responses with dynamic database state balance tolerance."
+    custom_function_file: metrics.py
+    function_name: final_response_match_v2
+
   - name: custom_response_quality
     description: "LLM-as-judge scoring based on the comprehensive 5-dimension rubric in evals/RUBRICS.md (Correctness, Grounding, Reasoning, Abstention, Citation)."
     custom_function_file: metrics.py

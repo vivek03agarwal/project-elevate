@@ -6,6 +6,7 @@
     {
       "eval_id": "multiturn",
       "name": "Multi-Turn Employee Onboarding, Address Verification & Facilities Badge Incident",
+      "description": "Tests stateful context retention across multiple turns: residential address check, facilities badge incident ticket creation, and sick leave policy check.",
       "conversation": [
         {
           "invocation_id": "turn_1",
