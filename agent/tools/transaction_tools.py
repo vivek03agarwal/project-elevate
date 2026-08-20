@@ -247,6 +247,7 @@ def workweek_get_leave_requests(employee_id: str = "EMP-439") -> Dict[str, Any]:
     Returns:
         Dictionary containing 'employee_id' and 'requests' (list of leave requests with request_id, leave_type, start_date, end_date, days, and status).
     """
+    formatted = []
     # 1. Check live SaaS platform
     try:
         from agent.tools.mcp_client import mock_saas_client
@@ -263,20 +264,31 @@ def workweek_get_leave_requests(employee_id: str = "EMP-439") -> Dict[str, Any]:
                 }
                 for r in live_reqs
             ]
-            return {
-                "employee_id": employee_id,
-                "requests": formatted,
-                "count": len(formatted),
-                "message": f"Found {len(formatted)} leave request(s) in WorkWeek HCM.",
-            }
     except Exception:
         pass
 
-    # 2. Fallback to local DB
+    # 2. Merge local mock requests
+    seen_ids = {r["request_id"] for r in formatted}
+    for loc in MOCK_LEAVE_REQUESTS:
+        rid = loc.get("id", "LV-99210")
+        if rid not in seen_ids:
+            formatted.append({
+                "request_id": rid,
+                "leave_type": loc.get("leave_type", "Vacation"),
+                "start_date": loc.get("start_date", "2026-08-24"),
+                "end_date": loc.get("end_date", loc.get("start_date", "2026-08-24")),
+                "days": loc.get("days", 1.0),
+                "status": loc.get("status", "Approved"),
+            })
+
+    # Sort descending so the most recently submitted requests appear at the top
+    formatted.sort(key=lambda x: str(x.get("request_id", "")), reverse=True)
+
     return {
         "employee_id": employee_id,
-        "requests": MOCK_LEAVE_REQUESTS,
-        "count": len(MOCK_LEAVE_REQUESTS),
-        "message": f"Found {len(MOCK_LEAVE_REQUESTS)} leave request(s) in WorkWeek HCM.",
+        "requests": formatted,
+        "count": len(formatted),
+        "message": f"Found {len(formatted)} leave request(s) in WorkWeek HCM.",
     }
+
 

@@ -28,26 +28,7 @@ MOCK_PTO_BALANCES = WorkWeekPtoBalances(
     volunteer_days=2.0,
 )
 
-MOCK_LEAVE_REQUESTS = [
-    {
-        "id": "LV-99210",
-        "leave_type": "Vacation",
-        "start_date": "2026-06-10",
-        "end_date": "2026-06-12",
-        "days": 3.0,
-        "status": "Approved",
-        "submitted_at": "2026-05-20",
-    },
-    {
-        "id": "LV-99155",
-        "leave_type": "Outpatient Sick",
-        "start_date": "2026-04-02",
-        "end_date": "2026-04-02",
-        "days": 1.0,
-        "status": "Approved (MC Submitted)",
-        "submitted_at": "2026-04-02",
-    },
-]
+MOCK_LEAVE_REQUESTS = []
 
 MOCK_ITSM_TICKETS = [
     ServiceNowIncidentRecord(

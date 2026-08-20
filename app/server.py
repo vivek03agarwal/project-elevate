@@ -149,7 +149,9 @@ def get_pto_balances():
         seen_ids = {r["id"] for r in formatted_requests}
         for loc in MOCK_LEAVE_REQUESTS:
             if loc["id"] not in seen_ids:
-                formatted_requests.insert(0, loc)
+                formatted_requests.append(loc)
+
+        formatted_requests.sort(key=lambda x: str(x.get("id", "")), reverse=True)
 
         return {
             "employee_id": "EMP-439",
