@@ -6,8 +6,8 @@ Connects directly to the live Mock SaaS platform:
 - APIs:
   - /service-immediately/api/tickets (GET, POST)
   - /work-week/api/employees/{employee_id}/profile (GET)
-  - /work-week/api/employees/{employee_id}/timeoff (GET)
-  - /work-week/api/employees/{employee_id}/timeoff/requests (POST)
+  - /work-week/api/employees/{employee_id}/timeoff (GET, POST)
+  - /work-week/api/employees/{employee_id}/timeoff/requests (GET)
 """
 
 import json
@@ -82,16 +82,31 @@ class MockSaasLiveClient:
     def get_timeoff_balances(self, employee_id: str = DEFAULT_EMPLOYEE_ID) -> Optional[Dict[str, Any]]:
         return self._request(f"work-week/api/employees/{employee_id}/timeoff", method="GET")
 
+    def get_timeoff_requests(self, employee_id: str = DEFAULT_EMPLOYEE_ID) -> List[Dict[str, Any]]:
+        res = self._request(f"work-week/api/employees/{employee_id}/timeoff/requests", method="GET")
+        if isinstance(res, list):
+            return res
+        return []
+
     def submit_timeoff_request(self, employee_id: str = DEFAULT_EMPLOYEE_ID, leave_type: str = "Vacation", start_date: str = "2026-08-24", end_date: str = "2026-08-24", days: float = 1.0, reason: str = "") -> Optional[Dict[str, Any]]:
+        # Format leave_type to clean standard format (e.g. 'Vacation' or 'Sick')
+        clean_type = "Vacation"
+        if "sick" in leave_type.lower():
+            clean_type = "Sick"
+        elif "vacation" in leave_type.lower():
+            clean_type = "Vacation"
+        elif "childcare" in leave_type.lower():
+            clean_type = "Childcare"
+        else:
+            clean_type = leave_type
+
         payload = {
-            "employee_id": employee_id,
-            "type": leave_type,
             "start_date": start_date,
             "end_date": end_date,
-            "days": days,
-            "reason": reason,
+            "leave_type": clean_type,
+            "days": float(days),
         }
-        return self._request(f"work-week/api/employees/{employee_id}/timeoff/requests", method="POST", payload=payload)
+        return self._request(f"work-week/api/employees/{employee_id}/timeoff", method="POST", payload=payload)
 
 
 # Global singleton instance

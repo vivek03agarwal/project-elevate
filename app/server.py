@@ -133,6 +133,25 @@ def get_pto_balances():
         MOCK_PTO_BALANCES.vacation_days = float(live_bal["vacation_remaining"])
         MOCK_PTO_BALANCES.outpatient_sick_days = float(live_bal.get("sick_remaining", MOCK_PTO_BALANCES.outpatient_sick_days))
 
+    live_requests = mock_saas_client.get_timeoff_requests("EMP-439")
+    if live_requests:
+        formatted_requests = [
+            {
+                "id": f"LV-{r.get('request_id', '99215')}",
+                "leave_type": r.get("leave_type", "Vacation"),
+                "start_date": f"{r.get('start_date', '2026-08-24')} to {r.get('end_date', '2026-08-25')}",
+                "days": r.get("days", 1.0),
+                "status": "Approved",
+                "submitted_at": r.get("start_date", "2026-08-24"),
+            }
+            for r in live_requests
+        ]
+        return {
+            "employee_id": "EMP-439",
+            "balances": MOCK_PTO_BALANCES.model_dump(),
+            "recent_requests": formatted_requests,
+        }
+
     return {
         "employee_id": "EMP-439",
         "balances": MOCK_PTO_BALANCES.model_dump(),
@@ -185,6 +204,7 @@ def submit_leave_request(req: WorkWeekLeaveSubmissionRequest):
         days_deducted=req.days_count,
         remaining_balance=MOCK_PTO_BALANCES.vacation_days,
     ).model_dump()
+
 
 
 @app.get("/api/itsm/tickets")
