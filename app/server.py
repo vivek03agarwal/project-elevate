@@ -509,12 +509,12 @@ HTML_DASHBOARD = """<!DOCTYPE html>
           </div>
           <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
             <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Hospitalisation</span>
-            <p class="text-2xl font-bold text-slate-800 mt-1">60.0 <span class="text-xs font-normal text-slate-500">days</span></p>
+            <p class="text-2xl font-bold text-slate-800 mt-1" id="val-hosp">60.0 <span class="text-xs font-normal text-slate-500">days</span></p>
             <span class="text-[11px] text-slate-500">MOM Statutory</span>
           </div>
           <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
             <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Childcare Leave</span>
-            <p class="text-2xl font-bold text-slate-800 mt-1">6.0 <span class="text-xs font-normal text-slate-500">days</span></p>
+            <p class="text-2xl font-bold text-slate-800 mt-1" id="val-childcare">6.0 <span class="text-xs font-normal text-slate-500">days</span></p>
             <span class="text-[11px] text-slate-500">Singapore MOM</span>
           </div>
         </div>
@@ -740,6 +740,12 @@ HTML_DASHBOARD = """<!DOCTYPE html>
           if (hcmData.balances) {
             document.getElementById('val-sick').innerHTML = `${hcmData.balances.outpatient_sick_days.toFixed(1)} <span class="text-xs font-normal text-slate-500">days</span>`;
             document.getElementById('val-vacation').innerHTML = `${hcmData.balances.vacation_days.toFixed(1)} <span class="text-xs font-normal text-slate-500">days</span>`;
+            if (document.getElementById('val-hosp')) {
+              document.getElementById('val-hosp').innerHTML = `${hcmData.balances.hospitalisation_days.toFixed(1)} <span class="text-xs font-normal text-slate-500">days</span>`;
+            }
+            if (document.getElementById('val-childcare')) {
+              document.getElementById('val-childcare').innerHTML = `${hcmData.balances.childcare_days.toFixed(1)} <span class="text-xs font-normal text-slate-500">days</span>`;
+            }
           }
           if (hcmData.recent_requests && hcmData.recent_requests.length > 0) {
             const tbody = document.getElementById('leave-history-body');
@@ -812,7 +818,7 @@ HTML_DASHBOARD = """<!DOCTYPE html>
         const res = await fetch('/api/hcm/leave', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ employee_id: 'EMP-504405', leave_type: type, start_date: start, end_date: start, days_count: days })
+          body: JSON.stringify({ employee_id: 'EMP-439', leave_type: type, start_date: start, end_date: start, days_count: days })
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || 'Failed');
@@ -838,7 +844,7 @@ HTML_DASHBOARD = """<!DOCTYPE html>
         const res = await fetch('/api/itsm/tickets', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ caller_id: 'EMP-504405', category: cat, priority: pri, short_description: desc })
+          body: JSON.stringify({ caller_id: 'EMP-439', category: cat, priority: pri, short_description: desc })
         });
         const data = await res.json();
         if (res.ok) {
