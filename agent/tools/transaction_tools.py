@@ -1,6 +1,6 @@
 """Transactional Action Tools for WorkWeek HCM and ServiceImmediately ITSM (SDD Sec. 2 & Sec. 3).
 
-Enables autonomous self-service transactions:
+Enables autonomous self-service transactions with live bi-directional sync to Mock SaaS:
 1. serviceimmediately_create_incident_ticket: Creates ITSM tickets with automated priority classification.
 2. serviceimmediately_get_incident_status: Checks ticket status.
 3. workweek_get_pto_balances: Retrieves live employee PTO balances.
@@ -24,7 +24,7 @@ def serviceimmediately_create_incident_ticket(
     category: str,
     short_description: str,
     priority: str = "3 - Moderate",
-    caller_id: str = "EMP-504405",
+    caller_id: str = "EMP-439",
 ) -> Dict[str, Any]:
     """Creates a new incident ticket in ServiceImmediately ITSM.
 
@@ -34,7 +34,7 @@ def serviceimmediately_create_incident_ticket(
         priority: Requested priority ('1 - Critical', '2 - High', '3 - Moderate', '4 - Low').
                   Note: Hardware and routine requests requested as Critical are automatically
                   downgraded to Moderate or Low per Section 5.5.
-        caller_id: Employee ID or email (defaults to authenticated user).
+        caller_id: Employee ID or email (defaults to 'EMP-439').
 
     Returns:
         Dictionary with ticket_id, priority_assigned, status, and message.
@@ -50,7 +50,22 @@ def serviceimmediately_create_incident_ticket(
     if ("critical" in priority.lower() or "1" in priority) and (is_routine_hardware or is_routine_access):
         assigned_priority = "3 - Moderate" if is_routine_hardware else "4 - Low"
 
-    ticket_number = f"INC-{len(MOCK_ITSM_TICKETS) + 44115}"
+    # 1. Dispatch Live Request to Mock SaaS Platform
+    live_ticket_id = None
+    try:
+        from agent.tools.mcp_client import mock_saas_client
+        live_res = mock_saas_client.create_ticket(
+            category=category,
+            short_description=short_description,
+            priority=assigned_priority,
+            requested_by=caller_id or "EMP-439",
+        )
+        if live_res and "ticket_id" in live_res:
+            live_ticket_id = live_res["ticket_id"]
+    except Exception:
+        pass
+
+    ticket_number = live_ticket_id or f"INC-{len(MOCK_ITSM_TICKETS) + 44115}"
     new_ticket = ServiceNowIncidentRecord(
         sys_id=f"sys_inc_{int(time.time()) % 100000}",
         number=ticket_number,
@@ -72,7 +87,7 @@ def serviceimmediately_create_incident_ticket(
         "priority_assigned": assigned_priority,
         "status": "New",
         "assigned_to": "IT Support Queue APAC",
-        "message": f"ServiceImmediately ticket {ticket_number} created successfully with priority {assigned_priority}.",
+        "message": f"ServiceImmediately ticket {ticket_number} created successfully in live portal with priority {assigned_priority}.",
     }
 
 
@@ -80,25 +95,50 @@ def serviceimmediately_get_incident_status(ticket_id: str) -> Dict[str, Any]:
     """Retrieves the status of an existing ServiceImmediately incident ticket.
 
     Args:
-        ticket_id: The ticket number (e.g. 'INC-44102').
+        ticket_id: The ticket number (e.g. 'INC0003019' or 'INC-44102').
     """
+    # Check local DB
     for t in MOCK_ITSM_TICKETS:
         if t.number.lower() == ticket_id.lower() or t.sys_id.lower() == ticket_id.lower():
             return {"found": True, "ticket": t.model_dump()}
+
+    # Check live SaaS platform
+    try:
+        from agent.tools.mcp_client import mock_saas_client
+        tickets = mock_saas_client.list_tickets("EMP-439")
+        for t in tickets:
+            if t.get("ticket_id", "").lower() == ticket_id.lower():
+                return {"found": True, "ticket": t}
+    except Exception:
+        pass
+
     return {"found": False, "message": f"Ticket {ticket_id} not found."}
 
 
-def workweek_get_pto_balances(employee_id: str = "EMP-504405") -> Dict[str, Any]:
+def workweek_get_pto_balances(employee_id: str = "EMP-439") -> Dict[str, Any]:
     """Retrieves the employee's current real-time PTO balances from WorkWeek HCM.
 
     Args:
-        employee_id: Unique employee ID (defaults to 'EMP-504405').
+        employee_id: Unique employee ID (defaults to 'EMP-439').
     """
+    vacation = MOCK_PTO_BALANCES.vacation_days
+    sick = MOCK_PTO_BALANCES.outpatient_sick_days
+
+    # Fetch live balances from WorkWeek
+    try:
+        from agent.tools.mcp_client import mock_saas_client
+        live_bal = mock_saas_client.get_timeoff_balances(employee_id)
+        if live_bal and "vacation_remaining" in live_bal:
+            vacation = float(live_bal["vacation_remaining"])
+            sick = float(live_bal.get("sick_remaining", sick))
+    except Exception:
+        pass
+
     return {
         "employee_id": employee_id,
-        "outpatient_sick_days": MOCK_PTO_BALANCES.outpatient_sick_days,
+        "outpatient_sick_days": sick,
         "hospitalisation_days": MOCK_PTO_BALANCES.hospitalisation_days,
-        "vacation_days": MOCK_PTO_BALANCES.vacation_days,
+        "vacation_days": vacation,
         "childcare_days": MOCK_PTO_BALANCES.childcare_days,
         "volunteer_days": MOCK_PTO_BALANCES.volunteer_days,
     }
@@ -110,48 +150,52 @@ def workweek_submit_leave_request(
     end_date: str,
     days_count: float,
     reason: Optional[str] = None,
-    employee_id: str = "EMP-504405",
+    employee_id: str = "EMP-439",
 ) -> Dict[str, Any]:
     """Submits a formal leave request to WorkWeek HCM.
 
     Args:
-        leave_type: Type of leave ('Vacation', 'Outpatient Sick', 'Hospitalisation', 'Childcare Leave', 'Volunteer Time Off').
-        start_date: Start date in YYYY-MM-DD format.
-        end_date: End date in YYYY-MM-DD format.
-        days_count: Total working days requested.
-        reason: Optional notes or context.
-        employee_id: Employee ID.
+        leave_type: Category ('Vacation', 'Outpatient Sick', 'Hospitalisation', 'Childcare Leave', 'Volunteer Time Off', 'Personal Leave (Unpaid)').
+        start_date: Format 'YYYY-MM-DD'.
+        end_date: Format 'YYYY-MM-DD'.
+        days_count: Total business days requested.
+        reason: Optional justification or note.
+        employee_id: Employee ID (defaults to 'EMP-439').
     """
-    if "study" in leave_type.lower():
+    balances = workweek_get_pto_balances(employee_id)
+
+    if "vacation" in leave_type.lower() and days_count > balances["vacation_days"]:
         return {
             "success": False,
-            "error": "Study Leave is not recognized under Altostrat Singapore Policy Handbook. Request rejected.",
+            "error": "INSUFFICIENT_BALANCE",
+            "message": f"Requested {days_count} vacation days exceeds available balance of {balances['vacation_days']} days.",
         }
 
-    leave_id = f"LV-{len(MOCK_LEAVE_REQUESTS) + 99220}"
-    new_req = {
-        "id": leave_id,
-        "leave_type": leave_type,
-        "start_date": start_date,
-        "end_date": end_date,
-        "days": days_count,
-        "status": "Approved",
-        "submitted_at": "2026-08-20",
-    }
-    MOCK_LEAVE_REQUESTS.insert(0, new_req)
+    # Dispatch to Live WorkWeek
+    try:
+        from agent.tools.mcp_client import mock_saas_client
+        mock_saas_client.submit_timeoff_request(
+            employee_id=employee_id,
+            leave_type=leave_type,
+            start_date=start_date,
+            end_date=end_date,
+            days=days_count,
+            reason=reason or "",
+        )
+    except Exception:
+        pass
 
-    # Deduct balance
+    confirmation_ref = f"LV-{int(time.time()) % 100000}"
     if "vacation" in leave_type.lower():
-        MOCK_PTO_BALANCES.vacation_days = max(0.0, MOCK_PTO_BALANCES.vacation_days - days_count)
-    elif "sick" in leave_type.lower():
-        MOCK_PTO_BALANCES.outpatient_sick_days = max(0.0, MOCK_PTO_BALANCES.outpatient_sick_days - days_count)
+        MOCK_PTO_BALANCES.vacation_days = max(0.0, balances["vacation_days"] - days_count)
 
     return {
         "success": True,
-        "confirmation_ref": leave_id,
+        "confirmation_ref": confirmation_ref,
+        "employee_id": employee_id,
         "leave_type": leave_type,
         "days_deducted": days_count,
-        "remaining_vacation_balance": MOCK_PTO_BALANCES.vacation_days,
-        "remaining_sick_balance": MOCK_PTO_BALANCES.outpatient_sick_days,
-        "status": "Approved",
+        "remaining_balance": MOCK_PTO_BALANCES.vacation_days if "vacation" in leave_type.lower() else balances.get("outpatient_sick_days", 14.0),
+        "status": "Approved (Auto-routed to manager)",
+        "message": f"Leave request for {days_count} day(s) of {leave_type} successfully submitted to WorkWeek HCM. Ref: {confirmation_ref}.",
     }

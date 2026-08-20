@@ -118,13 +118,23 @@ def health_check():
 
 @app.get("/api/hcm/profile")
 def get_employee_profile():
+    from agent.tools.mcp_client import mock_saas_client
+    live_profile = mock_saas_client.get_employee_profile("EMP-439")
+    if live_profile:
+        return {"employee": live_profile}
     return {"employee": MOCK_EMPLOYEE.model_dump()}
 
 
 @app.get("/api/hcm/pto")
 def get_pto_balances():
+    from agent.tools.mcp_client import mock_saas_client
+    live_bal = mock_saas_client.get_timeoff_balances("EMP-439")
+    if live_bal and "vacation_remaining" in live_bal:
+        MOCK_PTO_BALANCES.vacation_days = float(live_bal["vacation_remaining"])
+        MOCK_PTO_BALANCES.outpatient_sick_days = float(live_bal.get("sick_remaining", MOCK_PTO_BALANCES.outpatient_sick_days))
+
     return {
-        "employee_id": MOCK_EMPLOYEE.employee_id,
+        "employee_id": "EMP-439",
         "balances": MOCK_PTO_BALANCES.model_dump(),
         "recent_requests": MOCK_LEAVE_REQUESTS,
     }
@@ -138,6 +148,17 @@ def submit_leave_request(req: WorkWeekLeaveSubmissionRequest):
             status_code=400,
             detail=f"Insufficient vacation balance. Requested: {req.days_count}, Available: {MOCK_PTO_BALANCES.vacation_days}"
         )
+
+    # Sync with live Mock SaaS WorkWeek
+    from agent.tools.mcp_client import mock_saas_client
+    mock_saas_client.submit_timeoff_request(
+        employee_id="EMP-439",
+        leave_type=req.leave_type.value,
+        start_date=req.start_date,
+        end_date=req.end_date,
+        days=req.days_count,
+        reason=req.reason or "",
+    )
 
     leave_id = f"LV-{len(MOCK_LEAVE_REQUESTS) + 99215}"
     new_req = {
@@ -168,6 +189,23 @@ def submit_leave_request(req: WorkWeekLeaveSubmissionRequest):
 
 @app.get("/api/itsm/tickets")
 def get_itsm_tickets():
+    from agent.tools.mcp_client import mock_saas_client
+    live_tickets = mock_saas_client.list_tickets("EMP-439")
+    if live_tickets:
+        return {"tickets": [
+            {
+                "sys_id": t.get("ticket_id", "INC0001"),
+                "number": t.get("ticket_id", "INC0001"),
+                "category": t.get("category", "Hardware"),
+                "short_description": t.get("short_description", "IT Request"),
+                "priority": t.get("priority", "3 - Moderate"),
+                "state": t.get("status", "New"),
+                "assigned_to": t.get("assignment_group", "Service Desk"),
+                "opened_at": t.get("created_at", "2026-08-20")[:10],
+                "resolved_at": None,
+            }
+            for t in live_tickets
+        ]}
     return {"tickets": [t.model_dump() for t in MOCK_ITSM_TICKETS]}
 
 
@@ -179,7 +217,14 @@ def create_itsm_ticket(req: ServiceNowIncidentCreate):
     if "password" in desc_lower or "login" in desc_lower or "sso" in desc_lower:
         priority = IncidentPriority.P4_LOW.value
 
-    ticket_id = f"INC-{len(MOCK_ITSM_TICKETS) + 44110}"
+    from agent.tools.mcp_client import mock_saas_client
+    live_res = mock_saas_client.create_ticket(
+        category=req.category.value,
+        short_description=req.short_description,
+        priority=priority,
+        requested_by="EMP-439",
+    )
+    ticket_id = (live_res.get("ticket_id") if live_res else None) or f"INC-{len(MOCK_ITSM_TICKETS) + 44110}"
     new_ticket = ServiceNowIncidentRecord(
         sys_id=f"sys_inc_{int(time.time()) % 100000}",
         number=ticket_id,
@@ -192,6 +237,7 @@ def create_itsm_ticket(req: ServiceNowIncidentCreate):
     )
     MOCK_ITSM_TICKETS.insert(0, new_ticket)
     return {"ticket_id": ticket_id, "status": "Created", "priority": priority}
+
 
 
 @app.post("/api/auth/token-exchange")
