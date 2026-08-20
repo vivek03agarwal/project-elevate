@@ -295,7 +295,8 @@ async def call_mcp_tool(request: Request):
     """Executes an MCP tool with token authentication."""
     auth_header = request.headers.get("Authorization", "")
     token = auth_header.replace("Bearer ", "").strip()
-    valid_token = os.getenv("MCP_AUTH_TOKEN", "mcp_HB5laIVgmXjfFK7zBfDPQWixOs3QG0IdUm_goLxRwPY")
+    valid_token = os.getenv("MCP_AUTH_TOKEN", "mcp_OMAYt-SofNhqyJXHYmpE-3KGoBkq9aHAiu16hU7io6I")
+
 
     if token != valid_token and not token.startswith("mcp_"):
         raise HTTPException(status_code=401, detail="Invalid MCP Bearer Token")

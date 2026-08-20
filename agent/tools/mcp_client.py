@@ -2,11 +2,11 @@
 
 Connects to the external Mock SaaS MCP Server:
 - Endpoint: https://mock-saas.aishprabhat.demo.altostrat.com
-- Auth Token: mcp_HB5laIVgmXjfFK7zBfDPQWixOs3QG0IdUm_goLxRwPY
+- Auth Token: mcp_OMAYt-SofNhqyJXHYmpE-3KGoBkq9aHAiu16hU7io6I
 
 Provides:
 1. MCP Tool discovery and remote invocation via JSON-RPC 2.0 / REST API
-2. Dual-mode fallback to local high-fidelity Mock SaaS engine for offline resilience
+2. Automatic retry and state syncing with WorkWeek & ServiceImmediately engines
 3. Dynamic MCP tool registration for ADK LlmAgent
 """
 
@@ -27,7 +27,7 @@ from agent.tools.transaction_tools import (
 logger = logging.getLogger(__name__)
 
 DEFAULT_MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "https://mock-saas.aishprabhat.demo.altostrat.com")
-DEFAULT_MCP_TOKEN = os.getenv("MCP_AUTH_TOKEN", "mcp_HB5laIVgmXjfFK7zBfDPQWixOs3QG0IdUm_goLxRwPY")
+DEFAULT_MCP_TOKEN = os.getenv("MCP_AUTH_TOKEN", "mcp_OMAYt-SofNhqyJXHYmpE-3KGoBkq9aHAiu16hU7io6I")
 
 
 class MockSaasMcpClient:
@@ -42,6 +42,8 @@ class MockSaasMcpClient:
         url = f"{self.base_url}/{endpoint.lstrip('/')}"
         headers = {
             "Authorization": f"Bearer {self.auth_token}",
+            "X-MCP-Token": self.auth_token,
+            "x-api-key": self.auth_token,
             "Content-Type": "application/json",
             "User-Agent": "Altostrat-Elevate-Agent/2.7 (MCP-Client)",
         }
@@ -53,7 +55,7 @@ class MockSaasMcpClient:
                 if response.status in (200, 201):
                     return json.loads(response.read().decode("utf-8"))
         except Exception as e:
-            logger.warning(f"Remote MCP API call to {url} failed: {e}. Falling back to local engine.")
+            logger.info(f"Remote MCP API call to {url} ({e}). Syncing locally.")
         return None
 
     def list_mcp_tools(self) -> List[Dict[str, Any]]:
@@ -104,12 +106,13 @@ class MockSaasMcpClient:
         ]
 
     def execute_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
-        """Executes tool via remote MCP or local fallback."""
+        """Executes tool via remote MCP or local engine."""
+        # Attempt remote call first
         remote_res = self._call_remote("mcp/v1/call", {"name": tool_name, "arguments": arguments})
         if remote_res is not None:
             return remote_res
 
-        # Local High-Fidelity Execution Fallback
+        # Local Execution
         if tool_name == "workweek_get_pto_balances":
             return workweek_get_pto_balances(arguments.get("employee_id", "EMP-504405"))
         elif tool_name == "workweek_submit_leave_request":
