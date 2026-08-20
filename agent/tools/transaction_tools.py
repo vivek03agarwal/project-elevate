@@ -186,8 +186,35 @@ def workweek_submit_leave_request(
         pass
 
     confirmation_ref = f"LV-{int(time.time()) % 100000}"
-    if "vacation" in leave_type.lower():
-        MOCK_PTO_BALANCES.vacation_days = max(0.0, balances["vacation_days"] - days_count)
+    lt_lower = leave_type.lower()
+    if "vacation" in lt_lower or "annual" in lt_lower:
+        MOCK_PTO_BALANCES.vacation_days = max(0.0, MOCK_PTO_BALANCES.vacation_days - days_count)
+        remaining = MOCK_PTO_BALANCES.vacation_days
+    elif "hospital" in lt_lower:
+        MOCK_PTO_BALANCES.hospitalisation_days = max(0.0, MOCK_PTO_BALANCES.hospitalisation_days - days_count)
+        remaining = MOCK_PTO_BALANCES.hospitalisation_days
+    elif "sick" in lt_lower or "outpatient" in lt_lower:
+        MOCK_PTO_BALANCES.outpatient_sick_days = max(0.0, MOCK_PTO_BALANCES.outpatient_sick_days - days_count)
+        remaining = MOCK_PTO_BALANCES.outpatient_sick_days
+    elif "childcare" in lt_lower:
+        MOCK_PTO_BALANCES.childcare_days = max(0.0, MOCK_PTO_BALANCES.childcare_days - days_count)
+        remaining = MOCK_PTO_BALANCES.childcare_days
+    elif "volunteer" in lt_lower:
+        MOCK_PTO_BALANCES.volunteer_days = max(0.0, MOCK_PTO_BALANCES.volunteer_days - days_count)
+        remaining = MOCK_PTO_BALANCES.volunteer_days
+    else:
+        remaining = MOCK_PTO_BALANCES.vacation_days
+
+    # Save to local mock history
+    new_req_record = {
+        "id": confirmation_ref,
+        "leave_type": leave_type,
+        "start_date": f"{start_date} to {end_date}" if start_date != end_date else start_date,
+        "days": days_count,
+        "status": "Approved",
+        "submitted_at": start_date,
+    }
+    MOCK_LEAVE_REQUESTS.insert(0, new_req_record)
 
     return {
         "success": True,
@@ -195,7 +222,7 @@ def workweek_submit_leave_request(
         "employee_id": employee_id,
         "leave_type": leave_type,
         "days_deducted": days_count,
-        "remaining_balance": MOCK_PTO_BALANCES.vacation_days if "vacation" in leave_type.lower() else balances.get("outpatient_sick_days", 14.0),
+        "remaining_balance": remaining,
         "status": "Approved (Auto-routed to manager)",
         "message": f"Leave request for {days_count} day(s) of {leave_type} successfully submitted to WorkWeek HCM. Ref: {confirmation_ref}.",
     }

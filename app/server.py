@@ -193,16 +193,29 @@ def submit_leave_request(req: WorkWeekLeaveSubmissionRequest):
 
     # Deduct balance
     if req.leave_type == LeaveCategory.VACATION:
-        MOCK_PTO_BALANCES.vacation_days -= req.days_count
+        MOCK_PTO_BALANCES.vacation_days = max(0.0, MOCK_PTO_BALANCES.vacation_days - req.days_count)
+        rem = MOCK_PTO_BALANCES.vacation_days
+    elif req.leave_type == LeaveCategory.HOSPITALISATION:
+        MOCK_PTO_BALANCES.hospitalisation_days = max(0.0, MOCK_PTO_BALANCES.hospitalisation_days - req.days_count)
+        rem = MOCK_PTO_BALANCES.hospitalisation_days
     elif req.leave_type == LeaveCategory.OUTPATIENT_SICK:
-        MOCK_PTO_BALANCES.outpatient_sick_days -= req.days_count
+        MOCK_PTO_BALANCES.outpatient_sick_days = max(0.0, MOCK_PTO_BALANCES.outpatient_sick_days - req.days_count)
+        rem = MOCK_PTO_BALANCES.outpatient_sick_days
+    elif req.leave_type == LeaveCategory.CHILDCARE:
+        MOCK_PTO_BALANCES.childcare_days = max(0.0, MOCK_PTO_BALANCES.childcare_days - req.days_count)
+        rem = MOCK_PTO_BALANCES.childcare_days
+    elif req.leave_type == LeaveCategory.VOLUNTEER:
+        MOCK_PTO_BALANCES.volunteer_days = max(0.0, MOCK_PTO_BALANCES.volunteer_days - req.days_count)
+        rem = MOCK_PTO_BALANCES.volunteer_days
+    else:
+        rem = MOCK_PTO_BALANCES.vacation_days
 
     return WorkWeekLeaveConfirmation(
         confirmation_ref=leave_id,
         status="Approved",
         leave_type=req.leave_type.value,
         days_deducted=req.days_count,
-        remaining_balance=MOCK_PTO_BALANCES.vacation_days,
+        remaining_balance=rem,
     ).model_dump()
 
 

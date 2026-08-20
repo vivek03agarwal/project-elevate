@@ -89,16 +89,15 @@ class MockSaasLiveClient:
         return []
 
     def submit_timeoff_request(self, employee_id: str = DEFAULT_EMPLOYEE_ID, leave_type: str = "Vacation", start_date: str = "2026-08-24", end_date: str = "2026-08-24", days: float = 1.0, reason: str = "") -> Optional[Dict[str, Any]]:
-        # Format leave_type to clean standard format (e.g. 'Vacation' or 'Sick')
+        # Mock SaaS backend strictly accepts either 'Vacation' or 'Sick'
         clean_type = "Vacation"
-        if "sick" in leave_type.lower():
+        lt_lower = leave_type.lower()
+        if any(k in lt_lower for k in ["sick", "hospital", "medical", "mc", "outpatient", "doctor", "clinic", "health"]):
             clean_type = "Sick"
-        elif "vacation" in leave_type.lower():
+        elif any(k in lt_lower for k in ["vacation", "annual", "pto", "holiday", "personal"]):
             clean_type = "Vacation"
-        elif "childcare" in leave_type.lower():
-            clean_type = "Childcare"
         else:
-            clean_type = leave_type
+            clean_type = "Vacation"
 
         payload = {
             "start_date": start_date,
@@ -107,6 +106,7 @@ class MockSaasLiveClient:
             "days": float(days),
         }
         return self._request(f"work-week/api/employees/{employee_id}/timeoff", method="POST", payload=payload)
+
 
 
 # Global singleton instance
