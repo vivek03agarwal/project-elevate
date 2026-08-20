@@ -38,6 +38,7 @@ def select_tools(mode: str, include_transactions: bool = False):
         from .tools.transaction_tools import (
             serviceimmediately_create_incident_ticket,
             serviceimmediately_get_incident_status,
+            workweek_get_leave_requests,
             workweek_get_pto_balances,
             workweek_submit_leave_request,
         )
@@ -45,6 +46,7 @@ def select_tools(mode: str, include_transactions: bool = False):
             serviceimmediately_create_incident_ticket,
             serviceimmediately_get_incident_status,
             workweek_get_pto_balances,
+            workweek_get_leave_requests,
             workweek_submit_leave_request,
         ]
 

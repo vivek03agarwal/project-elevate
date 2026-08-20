@@ -199,3 +199,47 @@ def workweek_submit_leave_request(
         "status": "Approved (Auto-routed to manager)",
         "message": f"Leave request for {days_count} day(s) of {leave_type} successfully submitted to WorkWeek HCM. Ref: {confirmation_ref}.",
     }
+
+
+def workweek_get_leave_requests(employee_id: str = "EMP-439") -> Dict[str, Any]:
+    """Retrieves the list of past and pending leave requests submitted by the employee in WorkWeek HCM.
+
+    Args:
+        employee_id: Unique employee ID (defaults to 'EMP-439').
+
+    Returns:
+        Dictionary containing 'employee_id' and 'requests' (list of leave requests with request_id, leave_type, start_date, end_date, days, and status).
+    """
+    # 1. Check live SaaS platform
+    try:
+        from agent.tools.mcp_client import mock_saas_client
+        live_reqs = mock_saas_client.get_timeoff_requests(employee_id)
+        if live_reqs:
+            formatted = [
+                {
+                    "request_id": f"LV-{r.get('request_id', '99215')}" if not str(r.get('request_id', '')).startswith("LV-") else str(r.get('request_id')),
+                    "leave_type": r.get("leave_type", "Vacation"),
+                    "start_date": r.get("start_date"),
+                    "end_date": r.get("end_date"),
+                    "days": r.get("days", 1.0),
+                    "status": "Approved",
+                }
+                for r in live_reqs
+            ]
+            return {
+                "employee_id": employee_id,
+                "requests": formatted,
+                "count": len(formatted),
+                "message": f"Found {len(formatted)} leave request(s) in WorkWeek HCM.",
+            }
+    except Exception:
+        pass
+
+    # 2. Fallback to local DB
+    return {
+        "employee_id": employee_id,
+        "requests": MOCK_LEAVE_REQUESTS,
+        "count": len(MOCK_LEAVE_REQUESTS),
+        "message": f"Found {len(MOCK_LEAVE_REQUESTS)} leave request(s) in WorkWeek HCM.",
+    }
+
