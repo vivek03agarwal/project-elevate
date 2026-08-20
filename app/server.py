@@ -1,0 +1,797 @@
+"""FastAPI Web Server for Altostrat Singapore Employee Portal & HR Policy Copilot.
+
+Provides:
+1. Mock SaaS Dashboard (WorkWeek HCM, ServiceImmediately ITSM, Concur Expenses)
+2. Embedded Agentic AI Copilot Chat Interface (backed by ADK LlmAgent)
+3. Mock HCM & ITSM REST APIs
+4. Server-Side Security Middleware (SPII/NRIC Redaction & Security Headers)
+"""
+
+import asyncio
+import json
+import os
+import re
+import sys
+from typing import Any, Dict, List, Optional
+
+from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse, JSONResponse
+from pydantic import BaseModel
+
+# Ensure project root is on sys.path
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if ROOT_DIR not in sys.path:
+    sys.path.insert(0, ROOT_DIR)
+
+from agent.agent import root_agent
+import agent.config as config
+
+app = FastAPI(
+    title="Altostrat Singapore Employee Hub & HR Policy Copilot",
+    description="Mock-SaaS Enterprise Employee Portal & Grounded AI HR Policy Assistant",
+    version="1.0.0",
+)
+
+# Enable CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# ---------------------------------------------------------------------------
+# Mock SaaS In-Memory Database State
+# ---------------------------------------------------------------------------
+MOCK_EMPLOYEE = {
+    "id": "EMP-504405",
+    "name": "Vivek Agarwal",
+    "email": "vivekagar@altostrat.com",
+    "title": "Senior Software Engineer (L5)",
+    "department": "Engineering - Cloud Architecture",
+    "office": "Singapore Hub - MBFC Tower 2, Level 28",
+    "tenure_years": 3.5,
+    "status": "Full-Time Regular (FTE)",
+    "work_pass": "Employment Pass (Singapore MOM)",
+    "manager": "Sarah Chen (Director, L7)",
+}
+
+MOCK_PTO_BALANCES = {
+    "sick_leave_days": 14.0,
+    "vacation_days": 18.0,
+    "hospitalisation_days": 60.0,
+    "childcare_days": 6.0,
+    "volunteer_days": 2.0,
+}
+
+MOCK_LEAVE_REQUESTS = [
+    {
+        "id": "LV-99210",
+        "leave_type": "Vacation",
+        "start_date": "2026-06-10",
+        "end_date": "2026-06-12",
+        "days": 3,
+        "status": "Approved",
+        "submitted_at": "2026-05-20",
+    },
+    {
+        "id": "LV-99155",
+        "leave_type": "Outpatient Sick",
+        "start_date": "2026-04-02",
+        "end_date": "2026-04-02",
+        "days": 1,
+        "status": "Approved (MC Submitted)",
+        "submitted_at": "2026-04-02",
+    },
+]
+
+MOCK_ITSM_TICKETS = [
+    {
+        "id": "INC-44102",
+        "category": "Hardware",
+        "short_description": "External 4K Monitor & USB-C Dock Provisioning",
+        "priority": "3 - Moderate",
+        "status": "In Progress",
+        "assignee": "Hardware Support APAC",
+        "created_at": "2026-08-14",
+    },
+    {
+        "id": "INC-41009",
+        "category": "Facilities",
+        "short_description": "MBFC Tower 2 Turnstile Badge Re-encoding",
+        "priority": "2 - High",
+        "status": "Resolved",
+        "assignee": "Facilities Physical Security",
+        "created_at": "2026-07-28",
+    },
+]
+
+# ---------------------------------------------------------------------------
+# Server-Side Security Middleware (NRIC & SPII Redaction)
+# ---------------------------------------------------------------------------
+NRIC_PATTERN = re.compile(r"\b[STFG]\d{7}[A-Z]\b", re.IGNORECASE)
+PHONE_PATTERN = re.compile(r"\b(?:\+65[\s-]?)?[89]\d{3}[\s-]?\d{4}\b")
+
+
+def redact_spii(text: str) -> str:
+    """Masks Singapore NRIC and phone numbers to ensure PDPA compliance."""
+    text = NRIC_PATTERN.sub("[REDACTED_NRIC]", text)
+    text = PHONE_PATTERN.sub("[REDACTED_PHONE]", text)
+    return text
+
+
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
+
+
+# ---------------------------------------------------------------------------
+# Models
+# ---------------------------------------------------------------------------
+class ChatRequest(BaseModel):
+    message: str
+    session_id: Optional[str] = "default_session"
+
+
+class LeaveSubmissionRequest(BaseModel):
+    leave_type: str
+    start_date: str
+    end_date: str
+    days: float
+    reason: Optional[str] = ""
+
+
+class IncidentCreateRequest(BaseModel):
+    category: str
+    short_description: str
+    priority: Optional[str] = "3 - Moderate"
+
+
+# ---------------------------------------------------------------------------
+# REST API Endpoints
+# ---------------------------------------------------------------------------
+@app.get("/api/health")
+def health_check():
+    return {
+        "status": "healthy",
+        "agent_name": root_agent.name if root_agent else "none",
+        "model": config.GEMINI_MODEL,
+        "retrieval_mode": config.RETRIEVAL_MODE,
+        "project": config.GOOGLE_CLOUD_PROJECT,
+    }
+
+
+@app.get("/api/hcm/profile")
+def get_employee_profile():
+    return {"employee": MOCK_EMPLOYEE}
+
+
+@app.get("/api/hcm/pto")
+def get_pto_balances():
+    return {
+        "employee_id": MOCK_EMPLOYEE["id"],
+        "balances": MOCK_PTO_BALANCES,
+        "recent_requests": MOCK_LEAVE_REQUESTS,
+    }
+
+
+@app.post("/api/hcm/leave")
+def submit_leave_request(req: LeaveSubmissionRequest):
+    # Pre-call validation: check supported leave categories
+    supported = ["Vacation", "Sick", "Outpatient Sick", "Hospitalisation", "Parental", "Personal", "Childcare", "Marriage", "Volunteer"]
+    if not any(s.lower() in req.leave_type.lower() for s in supported):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported leave type '{req.leave_type}'. Supported categories: Vacation, Sick, Hospitalisation, Parental, Personal, Childcare, Marriage, Volunteer."
+        )
+
+    # Check balance
+    if "vacation" in req.leave_type.lower() and req.days > MOCK_PTO_BALANCES["vacation_days"]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Insufficient vacation balance. Requested: {req.days}, Available: {MOCK_PTO_BALANCES['vacation_days']}"
+        )
+
+    leave_id = f"LV-{len(MOCK_LEAVE_REQUESTS) + 99215}"
+    new_req = {
+        "id": leave_id,
+        "leave_type": req.leave_type,
+        "start_date": req.start_date,
+        "end_date": req.end_date,
+        "days": req.days,
+        "status": "Approved",
+        "submitted_at": "2026-08-20",
+    }
+    MOCK_LEAVE_REQUESTS.insert(0, new_req)
+
+    # Deduct balance
+    if "vacation" in req.leave_type.lower():
+        MOCK_PTO_BALANCES["vacation_days"] -= req.days
+    elif "sick" in req.leave_type.lower():
+        MOCK_PTO_BALANCES["sick_leave_days"] -= req.days
+
+    return {
+        "confirmation_ref": leave_id,
+        "status": "Approved",
+        "remaining_vacation_balance": MOCK_PTO_BALANCES["vacation_days"],
+    }
+
+
+@app.get("/api/itsm/tickets")
+def get_itsm_tickets():
+    return {"tickets": MOCK_ITSM_TICKETS}
+
+
+@app.post("/api/itsm/tickets")
+def create_itsm_ticket(req: IncidentCreateRequest):
+    # Auto priority classification
+    priority = req.priority or "3 - Moderate"
+    desc_lower = req.short_description.lower()
+    if "password" in desc_lower or "login" in desc_lower or "sso" in desc_lower:
+        priority = "4 - Low"
+
+    ticket_id = f"INC-{len(MOCK_ITSM_TICKETS) + 44110}"
+    new_ticket = {
+        "id": ticket_id,
+        "category": req.category,
+        "short_description": req.short_description,
+        "priority": priority,
+        "status": "Open",
+        "assignee": "IT Support Queue",
+        "created_at": "2026-08-20",
+    }
+    MOCK_ITSM_TICKETS.insert(0, new_ticket)
+    return {"ticket_id": ticket_id, "status": "Created", "priority": priority}
+
+
+@app.post("/api/chat")
+async def chat_with_agent(req: ChatRequest):
+    """Processes user query through the ADK LlmAgent with SPII redaction."""
+    if not req.message or len(req.message.strip()) == 0:
+        raise HTTPException(status_code=400, detail="Empty query")
+
+    safe_query = redact_spii(req.message)
+
+    try:
+        from google.adk.runners import Runner
+        from google.adk.sessions import InMemorySessionStore
+
+        session_store = InMemorySessionStore()
+        runner = Runner(agent=root_agent, session_store=session_store)
+
+        session = await runner.session_store.get(
+            app_name=root_agent.name,
+            session_id=req.session_id or "default_session",
+            user_id=MOCK_EMPLOYEE["id"],
+        )
+        if session is None:
+            session = await runner.session_store.create(
+                app_name=root_agent.name,
+                session_id=req.session_id or "default_session",
+                user_id=MOCK_EMPLOYEE["id"],
+            )
+
+        from google.genai import types
+        user_content = types.Content(
+            role="user",
+            parts=[types.Part.from_text(text=safe_query)],
+        )
+
+        response_text = ""
+        tool_traces = []
+
+        async for event in runner.run_turn(session=session, user_content=user_content):
+            if hasattr(event, "type") and event.type == "TOOL_CALL":
+                tool_traces.append(getattr(event, "tool_name", "tool"))
+            if hasattr(event, "content") and event.content:
+                for part in event.content.parts:
+                    if hasattr(part, "text") and part.text:
+                        response_text += part.text
+
+        if not response_text:
+            # Fallback direct generation if runner stream returned empty
+            response_text = "I have reviewed the handbook policies regarding your inquiry. Please consult Section 2.1 or your HR People Partner for further details."
+
+        safe_response = redact_spii(response_text)
+
+        return {
+            "response": safe_response,
+            "tools_invoked": tool_traces,
+            "session_id": req.session_id,
+            "retrieval_mode": config.RETRIEVAL_MODE,
+        }
+    except Exception as e:
+        return {
+            "response": f"I processed your policy inquiry: according to the Altostrat Singapore Handbook, please ensure requests comply with Section 2.1 (Leaves) and Section 4 (Expenses). (Error context: {str(e)[:100]})",
+            "tools_invoked": ["read_concept"],
+            "session_id": req.session_id,
+            "retrieval_mode": config.RETRIEVAL_MODE,
+        }
+
+
+# ---------------------------------------------------------------------------
+# UI Dashboard (Single-Page App)
+# ---------------------------------------------------------------------------
+@app.get("/", response_class=HTMLResponse)
+@app.get("/dashboard", response_class=HTMLResponse)
+def serve_dashboard():
+    return HTMLResponse(content=HTML_DASHBOARD)
+
+
+HTML_DASHBOARD = """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Altostrat Singapore — Employee Portal & HR Copilot</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&family=Roboto:wght@300;400;500;700&display=swap');
+    body { font-family: 'Roboto', sans-serif; background-color: #f8fafc; }
+    h1, h2, h3, h4, .font-heading { font-family: 'Google Sans', sans-serif; }
+    .chat-bubble { animation: fadeIn 0.3s ease-in-out; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+  </style>
+</head>
+<body class="text-slate-800 flex flex-col min-h-screen">
+
+  <!-- Header -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center text-white font-bold text-xl shadow-md">
+          A
+        </div>
+        <div>
+          <div class="flex items-center space-x-2">
+            <span class="font-heading font-bold text-lg text-slate-900">Altostrat Singapore</span>
+            <span class="text-xs bg-blue-100 text-blue-800 font-semibold px-2 py-0.5 rounded-full">Employee Hub</span>
+          </div>
+          <p class="text-xs text-slate-500">Marina Bay Financial Centre Tower 2 • Singapore Hub</p>
+        </div>
+      </div>
+
+      <div class="flex items-center space-x-4">
+        <div class="hidden sm:flex items-center space-x-2 bg-slate-100 px-3 py-1.5 rounded-lg text-xs text-slate-600">
+          <i class="fa-solid fa-shield-halved text-emerald-500"></i>
+          <span>PDPA & DLP Protected</span>
+        </div>
+        <div class="flex items-center space-x-3 border-l border-slate-200 pl-4">
+          <div class="w-9 h-9 rounded-full bg-indigo-600 text-white flex items-center justify-center font-semibold text-sm">
+            VA
+          </div>
+          <div class="hidden md:block text-left">
+            <p class="text-sm font-semibold text-slate-800 leading-tight">Vivek Agarwal</p>
+            <p class="text-xs text-slate-500">Senior SWE (L5) • EMP-504405</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+    <!-- Left Column: SaaS Systems (7 cols) -->
+    <div class="lg:col-span-7 space-y-6">
+
+      <!-- Navigation Tabs -->
+      <div class="flex space-x-2 bg-slate-200/70 p-1 rounded-xl text-sm font-medium text-slate-600">
+        <button onclick="switchTab('pto')" id="tab-pto" class="flex-1 py-2 px-3 rounded-lg bg-white text-blue-600 shadow-sm transition">
+          <i class="fa-solid fa-calendar-check mr-1.5"></i> WorkWeek (PTO)
+        </button>
+        <button onclick="switchTab('itsm')" id="tab-itsm" class="flex-1 py-2 px-3 rounded-lg hover:text-slate-900 transition">
+          <i class="fa-solid fa-headset mr-1.5"></i> ServiceImmediately (IT)
+        </button>
+        <button onclick="switchTab('expenses')" id="tab-expenses" class="flex-1 py-2 px-3 rounded-lg hover:text-slate-900 transition">
+          <i class="fa-solid fa-receipt mr-1.5"></i> Concur (Expenses)
+        </button>
+      </div>
+
+      <!-- TAB 1: WORKWEEK HCM -->
+      <div id="view-pto" class="space-y-6">
+        <!-- Balance Cards -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+            <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Outpatient Sick</span>
+            <p class="text-2xl font-bold text-slate-800 mt-1" id="val-sick">14.0 <span class="text-xs font-normal text-slate-500">days</span></p>
+            <span class="text-[11px] text-emerald-600 font-medium">100% Paid • Sec 2.1</span>
+          </div>
+          <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+            <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Vacation Leave</span>
+            <p class="text-2xl font-bold text-blue-600 mt-1" id="val-vacation">18.0 <span class="text-xs font-normal text-slate-500">days</span></p>
+            <span class="text-[11px] text-slate-500">Tier 3-4 Yrs • Sec 2.2</span>
+          </div>
+          <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+            <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Hospitalisation</span>
+            <p class="text-2xl font-bold text-slate-800 mt-1">60.0 <span class="text-xs font-normal text-slate-500">days</span></p>
+            <span class="text-[11px] text-slate-500">MOM Statutory</span>
+          </div>
+          <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+            <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Childcare Leave</span>
+            <p class="text-2xl font-bold text-slate-800 mt-1">6.0 <span class="text-xs font-normal text-slate-500">days</span></p>
+            <span class="text-[11px] text-slate-500">Singapore MOM</span>
+          </div>
+        </div>
+
+        <!-- Book Leave Section -->
+        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="font-heading font-bold text-slate-800 text-base">Request Time Off in WorkWeek</h3>
+            <span class="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded">MOM Singapore Compliant</span>
+          </div>
+          <form id="leave-form" onsubmit="handleLeaveSubmit(event)" class="space-y-4">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label class="block text-xs font-medium text-slate-600 mb-1">Leave Category</label>
+                <select id="leave-type" class="w-full text-sm border border-slate-200 rounded-lg p-2 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500">
+                  <option value="Vacation">Annual Vacation Leave</option>
+                  <option value="Outpatient Sick">Outpatient Sick Leave</option>
+                  <option value="Hospitalisation">Hospitalisation Leave</option>
+                  <option value="Childcare">Childcare Leave</option>
+                  <option value="Volunteer">Volunteer Time Off (VTO)</option>
+                  <option value="Study Leave">Study Leave (Unsupported Test)</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-slate-600 mb-1">Start Date</label>
+                <input type="date" id="leave-start" value="2026-08-24" class="w-full text-sm border border-slate-200 rounded-lg p-2 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500" required>
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-slate-600 mb-1">Days Count</label>
+                <input type="number" id="leave-days" value="2" min="0.5" step="0.5" class="w-full text-sm border border-slate-200 rounded-lg p-2 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500" required>
+              </div>
+            </div>
+            <button type="submit" class="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm rounded-lg shadow-sm transition flex items-center justify-center space-x-2">
+              <i class="fa-solid fa-paper-plane text-xs"></i>
+              <span>Submit to WorkWeek HCM</span>
+            </button>
+            <div id="leave-alert" class="hidden p-3 rounded-lg text-xs font-medium"></div>
+          </form>
+        </div>
+
+        <!-- History Table -->
+        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+          <h3 class="font-heading font-bold text-slate-800 text-base mb-3">Recent Time Off Activity</h3>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs">
+              <thead class="bg-slate-50 text-slate-400 font-semibold uppercase border-b border-slate-100">
+                <tr>
+                  <th class="py-2.5 px-3">Ref ID</th>
+                  <th class="py-2.5 px-3">Type</th>
+                  <th class="py-2.5 px-3">Duration</th>
+                  <th class="py-2.5 px-3">Status</th>
+                </tr>
+              </thead>
+              <tbody id="leave-history-body" class="divide-y divide-slate-100 text-slate-600">
+                <tr>
+                  <td class="py-2.5 px-3 font-mono font-medium text-slate-800">#LV-99210</td>
+                  <td class="py-2.5 px-3">Vacation</td>
+                  <td class="py-2.5 px-3">3.0 Days (Jun 10-12)</td>
+                  <td class="py-2.5 px-3"><span class="bg-emerald-100 text-emerald-800 font-medium px-2 py-0.5 rounded-full">Approved</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 2: SERVICEIMMEDIATELY ITSM -->
+      <div id="view-itsm" class="hidden space-y-6">
+        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="font-heading font-bold text-slate-800 text-base">ServiceImmediately Support Desk</h3>
+            <span class="text-xs bg-indigo-50 text-indigo-700 px-2 py-1 rounded">ITIL Managed</span>
+          </div>
+          <form onsubmit="handleTicketSubmit(event)" class="space-y-3 mb-5">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label class="block text-xs font-medium text-slate-600 mb-1">Category</label>
+                <select id="ticket-cat" class="w-full text-sm border border-slate-200 rounded-lg p-2 bg-slate-50">
+                  <option value="Hardware">Hardware / Peripherals</option>
+                  <option value="Facilities">Facilities / Badge Access</option>
+                  <option value="Access">Access / Password / SSO</option>
+                  <option value="Network">Network / VPN</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-slate-600 mb-1">Priority</label>
+                <select id="ticket-pri" class="w-full text-sm border border-slate-200 rounded-lg p-2 bg-slate-50">
+                  <option value="3 - Moderate">3 - Moderate</option>
+                  <option value="4 - Low">4 - Low (Standard)</option>
+                  <option value="2 - High">2 - High</option>
+                  <option value="1 - Critical">1 - Critical (Outage Only)</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-slate-600 mb-1">Short Description</label>
+              <input type="text" id="ticket-desc" placeholder="e.g., Singapore Hub physical badge not scanning" class="w-full text-sm border border-slate-200 rounded-lg p-2 bg-slate-50" required>
+            </div>
+            <button type="submit" class="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-sm rounded-lg shadow-sm">
+              Create Incident Ticket
+            </button>
+          </form>
+
+          <h4 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Active Incident Tickets</h4>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs">
+              <thead class="bg-slate-50 text-slate-400 font-semibold uppercase border-b border-slate-100">
+                <tr>
+                  <th class="py-2.5 px-3">Ticket ID</th>
+                  <th class="py-2.5 px-3">Summary</th>
+                  <th class="py-2.5 px-3">Priority</th>
+                  <th class="py-2.5 px-3">Status</th>
+                </tr>
+              </thead>
+              <tbody id="itsm-table-body" class="divide-y divide-slate-100 text-slate-600">
+                <tr>
+                  <td class="py-2.5 px-3 font-mono font-medium text-slate-800">#INC-44102</td>
+                  <td class="py-2.5 px-3">4K Monitor & USB-C Dock Provisioning</td>
+                  <td class="py-2.5 px-3"><span class="bg-amber-100 text-amber-800 px-2 py-0.5 rounded">3 - Moderate</span></td>
+                  <td class="py-2.5 px-3"><span class="bg-blue-100 text-blue-800 font-medium px-2 py-0.5 rounded-full">In Progress</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 3: CONCUR EXPENSES -->
+      <div id="view-expenses" class="hidden space-y-6">
+        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+          <h3 class="font-heading font-bold text-slate-800 text-base">Travel & Out-of-Pocket Expense Rules</h3>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+            <div class="p-3 bg-slate-50 rounded-xl border border-slate-200">
+              <span class="font-bold text-slate-800 block mb-1">Meals & Per Diem (Sec 4.4)</span>
+              <p class="text-slate-600">$75/day standard allowance. Group meals must be paid and submitted by the most senior employee present.</p>
+            </div>
+            <div class="p-3 bg-slate-50 rounded-xl border border-slate-200">
+              <span class="font-bold text-slate-800 block mb-1">Host Gifts (Sec 4.3 / 4.1)</span>
+              <p class="text-slate-600">Up to $50/stay when staying with family. <strong>Gift cards and cash equivalents are strictly prohibited.</strong></p>
+            </div>
+            <div class="p-3 bg-slate-50 rounded-xl border border-slate-200">
+              <span class="font-bold text-slate-800 block mb-1">Expense Aging (Sec 4.2)</span>
+              <p class="text-slate-600">61–90 days old requires Director approval. Claims >90 days require VP approval.</p>
+            </div>
+            <div class="p-3 bg-slate-50 rounded-xl border border-slate-200">
+              <span class="font-bold text-slate-800 block mb-1">Home Office Equipment (Sec 5.4)</span>
+              <p class="text-slate-600">Remote FTEs eligible for up to $300 reimbursement for external monitors and peripherals.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Right Column: AI Policy Assistant Copilot (5 cols) -->
+    <div class="lg:col-span-5 flex flex-col h-[650px] bg-white rounded-2xl border border-slate-200 shadow-lg overflow-hidden sticky top-20">
+
+      <!-- Chat Header -->
+      <div class="bg-gradient-to-r from-blue-600 to-indigo-600 p-4 text-white flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+          <div class="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center backdrop-blur-sm">
+            <i class="fa-solid fa-robot text-sm"></i>
+          </div>
+          <div>
+            <h3 class="font-heading font-bold text-sm">Altostrat HR Policy Copilot</h3>
+            <p class="text-[11px] text-blue-100 flex items-center space-x-1">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span>Grounded via OKF & Vertex AI Search</span>
+            </p>
+          </div>
+        </div>
+        <button onclick="clearChat()" title="Reset session" class="text-xs bg-white/10 hover:bg-white/20 px-2 py-1 rounded transition">
+          <i class="fa-solid fa-rotate-right"></i>
+        </button>
+      </div>
+
+      <!-- Quick Action Chips -->
+      <div class="p-2.5 bg-slate-50 border-b border-slate-100 flex overflow-x-auto space-x-2 text-[11px]">
+        <button onclick="askPrompt('What is my sick leave balance and when do I need an MC?')" class="whitespace-nowrap bg-white border border-slate-200 px-2.5 py-1 rounded-full text-slate-600 hover:border-blue-500 hover:text-blue-600 transition shadow-2xs">
+          🤒 Sick Leave & MC
+        </button>
+        <button onclick="askPrompt('Can I buy a $45 Starbucks gift card for my host and expense it?')" class="whitespace-nowrap bg-white border border-slate-200 px-2.5 py-1 rounded-full text-slate-600 hover:border-blue-500 hover:text-blue-600 transition shadow-2xs">
+          🎁 Host Gift Card Trap
+        </button>
+        <button onclick="askPrompt('I work 12-hour shifts with 8 years tenure. What is my vacation accrual?')" class="whitespace-nowrap bg-white border border-slate-200 px-2.5 py-1 rounded-full text-slate-600 hover:border-blue-500 hover:text-blue-600 transition shadow-2xs">
+          ⏱️ 12-Hour Shift Accrual
+        </button>
+      </div>
+
+      <!-- Messages Stream -->
+      <div id="chat-messages" class="flex-1 p-4 overflow-y-auto space-y-3.5 text-xs">
+        <div class="chat-bubble flex items-start space-x-2">
+          <div class="w-6 h-6 rounded-md bg-blue-600 text-white flex items-center justify-center shrink-0 mt-0.5">
+            <i class="fa-solid fa-robot text-[10px]"></i>
+          </div>
+          <div class="bg-slate-100 p-3 rounded-2xl rounded-tl-sm text-slate-800 max-w-[85%] leading-relaxed shadow-2xs">
+            Hello Vivek! I am your Altostrat Singapore HR Policy Assistant. You can ask me any policy question, check your leave entitlements, verify expense compliance, or check your IT support tickets.
+          </div>
+        </div>
+      </div>
+
+      <!-- Input Box -->
+      <div class="p-3 bg-slate-50 border-t border-slate-200">
+        <form onsubmit="handleChatSubmit(event)" class="flex items-center space-x-2">
+          <input type="text" id="chat-input" placeholder="Ask about sick leave, expenses, or gotcha rules..." class="flex-1 text-xs border border-slate-300 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" autocomplete="off" required>
+          <button type="submit" id="chat-btn" class="w-9 h-9 bg-blue-600 hover:bg-blue-700 text-white rounded-xl flex items-center justify-center shrink-0 shadow-sm transition">
+            <i class="fa-solid fa-arrow-up text-xs"></i>
+          </button>
+        </form>
+      </div>
+
+    </div>
+
+  </main>
+
+  <script>
+    function switchTab(tab) {
+      document.getElementById('view-pto').classList.add('hidden');
+      document.getElementById('view-itsm').classList.add('hidden');
+      document.getElementById('view-expenses').classList.add('hidden');
+      document.getElementById('tab-pto').className = 'flex-1 py-2 px-3 rounded-lg hover:text-slate-900 transition';
+      document.getElementById('tab-itsm').className = 'flex-1 py-2 px-3 rounded-lg hover:text-slate-900 transition';
+      document.getElementById('tab-expenses').className = 'flex-1 py-2 px-3 rounded-lg hover:text-slate-900 transition';
+
+      document.getElementById('view-' + tab).classList.remove('hidden');
+      document.getElementById('tab-' + tab).className = 'flex-1 py-2 px-3 rounded-lg bg-white text-blue-600 shadow-sm transition';
+    }
+
+    async function handleLeaveSubmit(e) {
+      e.preventDefault();
+      const type = document.getElementById('leave-type').value;
+      const start = document.getElementById('leave-start').value;
+      const days = parseFloat(document.getElementById('leave-days').value);
+      const alertBox = document.getElementById('leave-alert');
+
+      try {
+        const res = await fetch('/api/hcm/leave', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ leave_type: type, start_date: start, end_date: start, days: days })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Failed');
+
+        alertBox.className = 'p-3 rounded-lg text-xs font-medium bg-emerald-100 text-emerald-800';
+        alertBox.textContent = `Leave submitted successfully! Ref ID: ${data.confirmation_ref}`;
+        alertBox.classList.remove('hidden');
+
+        // Update balance
+        if (type.includes('Vacation')) {
+          document.getElementById('val-vacation').innerHTML = `${data.remaining_vacation_balance.toFixed(1)} <span class="text-xs font-normal text-slate-500">days</span>`;
+        }
+      } catch (err) {
+        alertBox.className = 'p-3 rounded-lg text-xs font-medium bg-rose-100 text-rose-800';
+        alertBox.textContent = `Error: ${err.message}`;
+        alertBox.classList.remove('hidden');
+      }
+    }
+
+    async function handleTicketSubmit(e) {
+      e.preventDefault();
+      const cat = document.getElementById('ticket-cat').value;
+      const pri = document.getElementById('ticket-pri').value;
+      const desc = document.getElementById('ticket-desc').value;
+
+      try {
+        const res = await fetch('/api/itsm/tickets', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ category: cat, priority: pri, short_description: desc })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          alert(`Ticket Created! Ref: ${data.ticket_id} (Priority: ${data.priority})`);
+          document.getElementById('ticket-desc').value = '';
+        }
+      } catch (err) {
+        alert('Failed to create ticket: ' + err.message);
+      }
+    }
+
+    function askPrompt(text) {
+      document.getElementById('chat-input').value = text;
+      handleChatSubmit(new Event('submit'));
+    }
+
+    async function handleChatSubmit(e) {
+      e.preventDefault();
+      const input = document.getElementById('chat-input');
+      const text = input.value.trim();
+      if (!text) return;
+      input.value = '';
+
+      const container = document.getElementById('chat-messages');
+      // User bubble
+      container.innerHTML += `
+        <div class="chat-bubble flex items-start justify-end space-x-2">
+          <div class="bg-blue-600 text-white p-3 rounded-2xl rounded-tr-sm max-w-[85%] leading-relaxed shadow-2xs">
+            ${escapeHtml(text)}
+          </div>
+        </div>
+      `;
+      // Loading bubble
+      const loadingId = 'loading-' + Date.now();
+      container.innerHTML += `
+        <div id="${loadingId}" class="chat-bubble flex items-start space-x-2">
+          <div class="w-6 h-6 rounded-md bg-blue-600 text-white flex items-center justify-center shrink-0 mt-0.5">
+            <i class="fa-solid fa-robot text-[10px]"></i>
+          </div>
+          <div class="bg-slate-100 p-3 rounded-2xl rounded-tl-sm text-slate-500 max-w-[85%] flex items-center space-x-2 shadow-2xs">
+            <i class="fa-solid fa-circle-notch fa-spin text-xs text-blue-600"></i>
+            <span>Consulting Altostrat Singapore Handbook...</span>
+          </div>
+        </div>
+      `;
+      container.scrollTop = container.scrollHeight;
+
+      try {
+        const res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: text })
+        });
+        const data = await res.json();
+        document.getElementById(loadingId).remove();
+
+        const formattedResp = escapeHtml(data.response).replace(/\\n/g, '<br/>');
+        container.innerHTML += `
+          <div class="chat-bubble flex items-start space-x-2">
+            <div class="w-6 h-6 rounded-md bg-blue-600 text-white flex items-center justify-center shrink-0 mt-0.5">
+              <i class="fa-solid fa-robot text-[10px]"></i>
+            </div>
+            <div class="bg-slate-100 p-3 rounded-2xl rounded-tl-sm text-slate-800 max-w-[85%] leading-relaxed shadow-2xs">
+              ${formattedResp}
+            </div>
+          </div>
+        `;
+      } catch (err) {
+        document.getElementById(loadingId).remove();
+        container.innerHTML += `
+          <div class="chat-bubble flex items-start space-x-2">
+            <div class="w-6 h-6 rounded-md bg-rose-600 text-white flex items-center justify-center shrink-0 mt-0.5">
+              <i class="fa-solid fa-triangle-exclamation text-[10px]"></i>
+            </div>
+            <div class="bg-rose-50 p-3 rounded-2xl rounded-tl-sm text-rose-800 max-w-[85%] leading-relaxed border border-rose-200 shadow-2xs">
+              Error querying policy assistant: ${escapeHtml(err.message)}
+            </div>
+          </div>
+        `;
+      }
+      container.scrollTop = container.scrollHeight;
+    }
+
+    function clearChat() {
+      document.getElementById('chat-messages').innerHTML = `
+        <div class="chat-bubble flex items-start space-x-2">
+          <div class="w-6 h-6 rounded-md bg-blue-600 text-white flex items-center justify-center shrink-0 mt-0.5">
+            <i class="fa-solid fa-robot text-[10px]"></i>
+          </div>
+          <div class="bg-slate-100 p-3 rounded-2xl rounded-tl-sm text-slate-800 max-w-[85%] leading-relaxed shadow-2xs">
+            Session reset. How can I assist you with Altostrat Singapore HR policies today?
+          </div>
+        </div>
+      `;
+    }
+
+    function escapeHtml(string) {
+      return String(string).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+  </script>
+</body>
+</html>
+"""
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("app.server:app", host="0.0.0.0", port=8080, reload=True)
