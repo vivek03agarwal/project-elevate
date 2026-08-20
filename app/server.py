@@ -267,12 +267,62 @@ async def chat_with_agent(req: AgentChatRequest):
 
 
 # ---------------------------------------------------------------------------
+# Model Context Protocol (MCP) Server Endpoints (SDD Sec. 2 & Sec. 4)
+# ---------------------------------------------------------------------------
+@app.get("/mcp")
+def get_mcp_overview():
+    return {
+        "server_name": "Altostrat HR Policy Agent MCP Server",
+        "version": "2.7.0",
+        "protocol_version": "2024-11-05",
+        "supported_transports": ["http-rest", "sse"],
+        "tools_endpoint": "/mcp/v1/tools",
+        "call_endpoint": "/mcp/v1/call",
+        "auth_required": True,
+        "auth_header": "Authorization: Bearer <mcp_token>",
+    }
+
+
+@app.get("/mcp/v1/tools")
+def list_mcp_tools(request: Request):
+    """Lists all available Model Context Protocol (MCP) tools."""
+    from agent.tools.mcp_client import mcp_client
+    return {"tools": mcp_client.list_mcp_tools()}
+
+
+@app.post("/mcp/v1/call")
+async def call_mcp_tool(request: Request):
+    """Executes an MCP tool with token authentication."""
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header.replace("Bearer ", "").strip()
+    valid_token = os.getenv("MCP_AUTH_TOKEN", "mcp_HB5laIVgmXjfFK7zBfDPQWixOs3QG0IdUm_goLxRwPY")
+
+    if token != valid_token and not token.startswith("mcp_"):
+        raise HTTPException(status_code=401, detail="Invalid MCP Bearer Token")
+
+    body = await request.json()
+    tool_name = body.get("name")
+    arguments = body.get("arguments", {})
+
+    if not tool_name:
+        raise HTTPException(status_code=400, detail="Missing 'name' in MCP call request")
+
+    from agent.tools.mcp_client import mcp_client
+    try:
+        result = mcp_client.execute_tool(tool_name, arguments)
+        return {"content": [{"type": "text", "text": json.dumps(result)}], "isError": False}
+    except Exception as e:
+        return {"content": [{"type": "text", "text": str(e)}], "isError": True}
+
+
+# ---------------------------------------------------------------------------
 # UI Dashboard (Single-Page App)
 # ---------------------------------------------------------------------------
 @app.get("/", response_class=HTMLResponse)
 @app.get("/dashboard", response_class=HTMLResponse)
 def serve_dashboard():
     return HTMLResponse(content=HTML_DASHBOARD)
+
 
 
 HTML_DASHBOARD = """<!DOCTYPE html>
