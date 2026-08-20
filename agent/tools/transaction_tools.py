@@ -122,26 +122,25 @@ def workweek_get_pto_balances(employee_id: str = "EMP-439") -> Dict[str, Any]:
         employee_id: Unique employee ID (defaults to 'EMP-439').
     """
     vacation = MOCK_PTO_BALANCES.vacation_days
-    sick = MOCK_PTO_BALANCES.outpatient_sick_days
 
-    # Fetch live balances from WorkWeek
+    # Fetch live vacation balance from WorkWeek
     try:
         from agent.tools.mcp_client import mock_saas_client
         live_bal = mock_saas_client.get_timeoff_balances(employee_id)
         if live_bal and "vacation_remaining" in live_bal:
             vacation = float(live_bal["vacation_remaining"])
-            sick = float(live_bal.get("sick_remaining", sick))
     except Exception:
         pass
 
     return {
         "employee_id": employee_id,
-        "outpatient_sick_days": sick,
+        "outpatient_sick_days": MOCK_PTO_BALANCES.outpatient_sick_days,
         "hospitalisation_days": MOCK_PTO_BALANCES.hospitalisation_days,
         "vacation_days": vacation,
         "childcare_days": MOCK_PTO_BALANCES.childcare_days,
         "volunteer_days": MOCK_PTO_BALANCES.volunteer_days,
     }
+
 
 
 def workweek_submit_leave_request(

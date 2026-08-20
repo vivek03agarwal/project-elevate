@@ -131,7 +131,6 @@ def get_pto_balances():
     live_bal = mock_saas_client.get_timeoff_balances("EMP-439")
     if live_bal and "vacation_remaining" in live_bal:
         MOCK_PTO_BALANCES.vacation_days = float(live_bal["vacation_remaining"])
-        MOCK_PTO_BALANCES.outpatient_sick_days = float(live_bal.get("sick_remaining", MOCK_PTO_BALANCES.outpatient_sick_days))
 
     live_requests = mock_saas_client.get_timeoff_requests("EMP-439")
     if live_requests:
@@ -139,13 +138,19 @@ def get_pto_balances():
             {
                 "id": f"LV-{r.get('request_id', '99215')}",
                 "leave_type": r.get("leave_type", "Vacation"),
-                "start_date": f"{r.get('start_date', '2026-08-24')} to {r.get('end_date', '2026-08-25')}",
+                "start_date": f"{r.get('start_date', '2026-08-24')} to {r.get('end_date', '2026-08-25')}" if r.get("start_date") != r.get("end_date") else r.get("start_date", "2026-08-24"),
                 "days": r.get("days", 1.0),
                 "status": "Approved",
                 "submitted_at": r.get("start_date", "2026-08-24"),
             }
             for r in live_requests
         ]
+        # Merge local specific requests
+        seen_ids = {r["id"] for r in formatted_requests}
+        for loc in MOCK_LEAVE_REQUESTS:
+            if loc["id"] not in seen_ids:
+                formatted_requests.insert(0, loc)
+
         return {
             "employee_id": "EMP-439",
             "balances": MOCK_PTO_BALANCES.model_dump(),
@@ -157,6 +162,7 @@ def get_pto_balances():
         "balances": MOCK_PTO_BALANCES.model_dump(),
         "recent_requests": MOCK_LEAVE_REQUESTS,
     }
+
 
 
 @app.post("/api/hcm/leave")
