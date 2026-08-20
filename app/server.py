@@ -701,7 +701,7 @@ HTML_DASHBOARD = """<!DOCTYPE html>
         <button onclick="askPrompt('Can I buy a $45 Starbucks gift card for my host and expense it?')" class="whitespace-nowrap bg-white border border-slate-200 px-2.5 py-1 rounded-full text-slate-600 hover:border-blue-500 hover:text-blue-600 transition shadow-2xs">
           🎁 Host Gift Card Trap
         </button>
-        <button onclick="askPrompt('I work 12-hour shifts with 8 years tenure. What is my vacation accrual?')" class="whitespace-nowrap bg-white border border-slate-200 px-2.5 py-1 rounded-full text-slate-600 hover:border-blue-500 hover:text-blue-600 transition shadow-2xs">
+        <button onclick="askPrompt('I have been working at Altostrat for 8 years and I work 12-hour shifts. How many vacation days do I earn per year, and how many vacation days do I log to take a single 12-hour shift off?')" class="whitespace-nowrap bg-white border border-slate-200 px-2.5 py-1 rounded-full text-slate-600 hover:border-blue-500 hover:text-blue-600 transition shadow-2xs">
           ⏱️ 12-Hour Shift Accrual
         </button>
       </div>
