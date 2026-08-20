@@ -147,8 +147,8 @@ def workweek_get_pto_balances(employee_id: str = "EMP-439") -> Dict[str, Any]:
 def workweek_submit_leave_request(
     leave_type: str,
     start_date: str,
-    end_date: str,
     days_count: float,
+    end_date: Optional[str] = None,
     reason: Optional[str] = None,
     employee_id: str = "EMP-439",
 ) -> Dict[str, Any]:
@@ -157,11 +157,21 @@ def workweek_submit_leave_request(
     Args:
         leave_type: Category ('Vacation', 'Outpatient Sick', 'Hospitalisation', 'Childcare Leave', 'Volunteer Time Off', 'Personal Leave (Unpaid)').
         start_date: Format 'YYYY-MM-DD'.
-        end_date: Format 'YYYY-MM-DD'.
         days_count: Total business days requested.
+        end_date: Format 'YYYY-MM-DD'. If omitted or None, automatically calculated based on start_date and days_count.
         reason: Optional justification or note.
         employee_id: Employee ID (defaults to 'EMP-439').
     """
+    # Auto-calculate end_date if omitted or None
+    if not end_date or not str(end_date).strip():
+        try:
+            from datetime import datetime, timedelta
+            start_dt = datetime.strptime(start_date.strip(), "%Y-%m-%d")
+            days_to_add = max(0, int(round(days_count)) - 1)
+            end_date = (start_dt + timedelta(days=days_to_add)).strftime("%Y-%m-%d")
+        except Exception:
+            end_date = start_date
+
     balances = workweek_get_pto_balances(employee_id)
 
     if "vacation" in leave_type.lower() and days_count > balances["vacation_days"]:
@@ -184,6 +194,7 @@ def workweek_submit_leave_request(
         )
     except Exception:
         pass
+
 
     confirmation_ref = f"LV-{int(time.time()) % 100000}"
     lt_lower = leave_type.lower()

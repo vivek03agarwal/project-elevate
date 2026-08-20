@@ -88,7 +88,17 @@ class MockSaasLiveClient:
             return res
         return []
 
-    def submit_timeoff_request(self, employee_id: str = DEFAULT_EMPLOYEE_ID, leave_type: str = "Vacation", start_date: str = "2026-08-24", end_date: str = "2026-08-24", days: float = 1.0, reason: str = "") -> Optional[Dict[str, Any]]:
+    def submit_timeoff_request(self, employee_id: str = DEFAULT_EMPLOYEE_ID, leave_type: str = "Vacation", start_date: str = "2026-08-24", end_date: Optional[str] = None, days: float = 1.0, reason: str = "") -> Optional[Dict[str, Any]]:
+        # Auto-calculate end_date if missing
+        if not end_date or not str(end_date).strip():
+            try:
+                from datetime import datetime, timedelta
+                start_dt = datetime.strptime(start_date.strip(), "%Y-%m-%d")
+                days_to_add = max(0, int(round(days)) - 1)
+                end_date = (start_dt + timedelta(days=days_to_add)).strftime("%Y-%m-%d")
+            except Exception:
+                end_date = start_date
+
         # Mock SaaS backend strictly accepts either 'Vacation' or 'Sick'
         clean_type = "Vacation"
         lt_lower = leave_type.lower()

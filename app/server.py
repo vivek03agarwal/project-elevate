@@ -161,6 +161,16 @@ def get_pto_balances():
 
 @app.post("/api/hcm/leave")
 def submit_leave_request(req: WorkWeekLeaveSubmissionRequest):
+    # Auto-calculate end_date if missing
+    if not req.end_date or not str(req.end_date).strip():
+        try:
+            from datetime import datetime, timedelta
+            start_dt = datetime.strptime(req.start_date.strip(), "%Y-%m-%d")
+            days_to_add = max(0, int(round(req.days_count)) - 1)
+            req.end_date = (start_dt + timedelta(days=days_to_add)).strftime("%Y-%m-%d")
+        except Exception:
+            req.end_date = req.start_date
+
     # Check balance
     if req.leave_type == LeaveCategory.VACATION and req.days_count > MOCK_PTO_BALANCES.vacation_days:
         raise HTTPException(
@@ -178,6 +188,7 @@ def submit_leave_request(req: WorkWeekLeaveSubmissionRequest):
         days=req.days_count,
         reason=req.reason or "",
     )
+
 
     leave_id = f"LV-{len(MOCK_LEAVE_REQUESTS) + 99215}"
     new_req = {

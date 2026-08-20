@@ -81,10 +81,11 @@ class WorkWeekLeaveSubmissionRequest(BaseModel):
     employee_id: str
     leave_type: LeaveCategory
     start_date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
-    end_date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
+    end_date: Optional[str] = None
     days_count: float = Field(..., gt=0.0)
     reason: Optional[str] = None
     mc_attachment_uri: Optional[str] = None
+
 
 
 class WorkWeekLeaveConfirmation(BaseModel):
