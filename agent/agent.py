@@ -22,7 +22,7 @@ from google.adk.agents import LlmAgent  # noqa: F401  (used in the TODO block)
 # ---------------------------------------------------------------------------
 # GIVEN: tool selection. Picks the retrieval "brain" based on RETRIEVAL_MODE.
 # ---------------------------------------------------------------------------
-def select_tools(mode: str):
+def select_tools(mode: str, include_transactions: bool = False):
     """Return the list of tool callables for the given retrieval mode."""
     tools = []
     if mode in ("okf", "hybrid"):
@@ -33,34 +33,35 @@ def select_tools(mode: str):
         tools += [search_policy_docs]
     if not tools:
         raise ValueError(f"Unknown RETRIEVAL_MODE: {mode!r} (use okf | rag | hybrid)")
+
+    if include_transactions:
+        from .tools.transaction_tools import (
+            serviceimmediately_create_incident_ticket,
+            serviceimmediately_get_incident_status,
+            workweek_get_pto_balances,
+            workweek_submit_leave_request,
+        )
+        tools += [
+            serviceimmediately_create_incident_ticket,
+            serviceimmediately_get_incident_status,
+            workweek_get_pto_balances,
+            workweek_submit_leave_request,
+        ]
+
     return tools
 
 
 # ===========================================================================
-# TODO(you): Build the HR Policy Agent.
-#
-# Construct an ADK LlmAgent and assign it to `root_agent`. It should use:
-#   - model:       config.GEMINI_MODEL
-#   - name:        a short identifier, e.g. "hr_policy_agent"
-#   - description: one line describing what it does
-#   - instruction: POLICY_AGENT_PROMPT  (you write this in agent/prompt.py)
-#   - tools:       select_tools(config.RETRIEVAL_MODE)
-#
-# HINT: from google.adk.agents import LlmAgent  (already imported above)
-#       root_agent = LlmAgent(model=..., name=..., description=..., instruction=..., tools=...)
-#
-# Suggested coding-agent prompt:
-#   "In agent/agent.py, build an ADK LlmAgent named hr_policy_agent using
-#    config.GEMINI_MODEL, POLICY_AGENT_PROMPT as the instruction, and
-#    select_tools(config.RETRIEVAL_MODE) as its tools. Assign it to root_agent."
+# Build the HR Policy Agent.
 # ===========================================================================
 root_agent = LlmAgent(
     model=config.GEMINI_MODEL,
     name="hr_policy_agent",
     description="Altostrat Singapore HR Policy Assistant answering questions grounded in the employee handbook.",
     instruction=POLICY_AGENT_PROMPT,
-    tools=select_tools(config.RETRIEVAL_MODE),
+    tools=select_tools(config.RETRIEVAL_MODE, include_transactions=True),
 )
+
 
 
 # ---------------------------------------------------------------------------
