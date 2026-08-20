@@ -634,6 +634,63 @@ HTML_DASHBOARD = """<!DOCTYPE html>
   </main>
 
   <script>
+    async function loadDashboardData() {
+      try {
+        // 1. Fetch HCM PTO Balances and Requests
+        const hcmRes = await fetch('/api/hcm/pto');
+        if (hcmRes.ok) {
+          const hcmData = await hcmRes.json();
+          if (hcmData.balances) {
+            document.getElementById('val-sick').innerHTML = `${hcmData.balances.outpatient_sick_days.toFixed(1)} <span class="text-xs font-normal text-slate-500">days</span>`;
+            document.getElementById('val-vacation').innerHTML = `${hcmData.balances.vacation_days.toFixed(1)} <span class="text-xs font-normal text-slate-500">days</span>`;
+          }
+          if (hcmData.recent_requests && hcmData.recent_requests.length > 0) {
+            const tbody = document.getElementById('leave-history-body');
+            tbody.innerHTML = hcmData.recent_requests.map(r => `
+              <tr>
+                <td class="py-2.5 px-3 font-mono font-medium text-slate-800">#${r.id}</td>
+                <td class="py-2.5 px-3">${r.leave_type}</td>
+                <td class="py-2.5 px-3">${r.days} Days (${r.start_date})</td>
+                <td class="py-2.5 px-3"><span class="bg-emerald-100 text-emerald-800 font-medium px-2 py-0.5 rounded-full">${r.status}</span></td>
+              </tr>
+            `).join('');
+          }
+        }
+
+        // 2. Fetch ITSM Incident Tickets
+        const itsmRes = await fetch('/api/itsm/tickets');
+        if (itsmRes.ok) {
+          const itsmData = await itsmRes.json();
+          if (itsmData.tickets && itsmData.tickets.length > 0) {
+            const tbody = document.getElementById('itsm-table-body');
+            tbody.innerHTML = itsmData.tickets.map(t => {
+              let priClass = "bg-slate-100 text-slate-700";
+              if (t.priority.includes("1")) priClass = "bg-rose-100 text-rose-800 font-bold";
+              else if (t.priority.includes("2")) priClass = "bg-amber-100 text-amber-800";
+              else if (t.priority.includes("3")) priClass = "bg-blue-100 text-blue-800";
+
+              let stateClass = "bg-blue-100 text-blue-800";
+              if (t.state === "Resolved" || t.state === "Closed") stateClass = "bg-emerald-100 text-emerald-800";
+              else if (t.state === "New") stateClass = "bg-purple-100 text-purple-800 font-semibold";
+
+              return `
+                <tr>
+                  <td class="py-2.5 px-3 font-mono font-medium text-slate-800">#${t.number}</td>
+                  <td class="py-2.5 px-3">${escapeHtml(t.short_description)}</td>
+                  <td class="py-2.5 px-3"><span class="${priClass} px-2 py-0.5 rounded">${t.priority}</span></td>
+                  <td class="py-2.5 px-3"><span class="${stateClass} font-medium px-2 py-0.5 rounded-full">${t.state}</span></td>
+                </tr>
+              `;
+            }).join('');
+          }
+        }
+      } catch (err) {
+        console.error("Failed to refresh dashboard:", err);
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', loadDashboardData);
+
     function switchTab(tab) {
       document.getElementById('view-pto').classList.add('hidden');
       document.getElementById('view-itsm').classList.add('hidden');
@@ -644,6 +701,7 @@ HTML_DASHBOARD = """<!DOCTYPE html>
 
       document.getElementById('view-' + tab).classList.remove('hidden');
       document.getElementById('tab-' + tab).className = 'flex-1 py-2 px-3 rounded-lg bg-white text-blue-600 shadow-sm transition';
+      loadDashboardData();
     }
 
     async function handleLeaveSubmit(e) {
@@ -665,11 +723,7 @@ HTML_DASHBOARD = """<!DOCTYPE html>
         alertBox.className = 'p-3 rounded-lg text-xs font-medium bg-emerald-100 text-emerald-800';
         alertBox.textContent = `Leave submitted successfully! Ref ID: ${data.confirmation_ref}`;
         alertBox.classList.remove('hidden');
-
-        // Update balance
-        if (type.includes('Vacation')) {
-          document.getElementById('val-vacation').innerHTML = `${data.remaining_balance.toFixed(1)} <span class="text-xs font-normal text-slate-500">days</span>`;
-        }
+        loadDashboardData();
       } catch (err) {
         alertBox.className = 'p-3 rounded-lg text-xs font-medium bg-rose-100 text-rose-800';
         alertBox.textContent = `Error: ${err.message}`;
@@ -693,6 +747,7 @@ HTML_DASHBOARD = """<!DOCTYPE html>
         if (res.ok) {
           alert(`Ticket Created! Ref: ${data.ticket_id} (Priority: ${data.priority})`);
           document.getElementById('ticket-desc').value = '';
+          loadDashboardData();
         }
       } catch (err) {
         alert('Failed to create ticket: ' + err.message);
@@ -755,6 +810,8 @@ HTML_DASHBOARD = """<!DOCTYPE html>
             </div>
           </div>
         `;
+        // Refresh tables and balances after chat action
+        loadDashboardData();
       } catch (err) {
         document.getElementById(loadingId).remove();
         container.innerHTML += `
@@ -788,6 +845,7 @@ HTML_DASHBOARD = """<!DOCTYPE html>
       return String(string).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
   </script>
+
 </body>
 </html>
 """
