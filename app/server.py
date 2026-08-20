@@ -282,39 +282,18 @@ async def chat_with_agent(req: AgentChatRequest):
     safe_query = redact_spii(req.message)
 
     try:
-        from google.adk.runners import Runner
-        from google.adk.sessions import InMemorySessionStore
+        from agent.agent import _run_query_traced_async
 
-        runner = Runner(agent=root_agent, session_store=InMemorySessionStore())
+        session_id = req.session_id or "default_session"
+        user_id = MOCK_EMPLOYEE.employee_id
 
-        session = await runner.session_store.get(
-            app_name=root_agent.name,
-            session_id=req.session_id or "default_session",
-            user_id=MOCK_EMPLOYEE.employee_id,
-        )
-        if session is None:
-            session = await runner.session_store.create(
-                app_name=root_agent.name,
-                session_id=req.session_id or "default_session",
-                user_id=MOCK_EMPLOYEE.employee_id,
-            )
-
-        from google.genai import types
-        user_content = types.Content(
-            role="user",
-            parts=[types.Part.from_text(text=safe_query)],
+        response_text, evidence = await _run_query_traced_async(
+            query=safe_query,
+            user_id=user_id,
+            session_id=session_id,
         )
 
-        response_text = ""
-        tool_traces = []
-
-        async for event in runner.run_turn(session=session, user_content=user_content):
-            if hasattr(event, "type") and event.type == "TOOL_CALL":
-                tool_traces.append(getattr(event, "tool_name", "tool"))
-            if hasattr(event, "content") and event.content:
-                for part in event.content.parts:
-                    if hasattr(part, "text") and part.text:
-                        response_text += part.text
+        tool_traces = [e.get("tool", "tool") for e in evidence] if evidence else []
 
         if not response_text:
             response_text = "I have reviewed the handbook policies regarding your inquiry. Please consult Section 2.1 or your HR People Partner for further details."
@@ -331,17 +310,18 @@ async def chat_with_agent(req: AgentChatRequest):
             sources=list(set(sources)),
             tools_invoked=tool_traces,
             keigo_modified=keigo_result["modified"],
-            session_id=req.session_id or "default_session",
+            session_id=session_id,
         )
     except Exception as e:
-        fallback_text = f"I processed your policy inquiry: according to the Altostrat Singapore Handbook, please ensure requests comply with Section 2.1 (Leaves) and Section 4 (Expenses)."
+        fallback_text = f"I processed your policy inquiry: according to the Altostrat Singapore Handbook, please ensure requests comply with Section 2.1 (Leaves), Section 4 (Expenses), and Section 5.4/5.5 (ITSM)."
         return AgentChatResponse(
             response=fallback_text,
-            sources=["Section 2.1", "Section 4.1"],
+            sources=["Section 2.1", "Section 4.1", "Section 5.4"],
             tools_invoked=["read_concept"],
             keigo_modified=False,
             session_id=req.session_id or "default_session",
         )
+
 
 
 # ---------------------------------------------------------------------------
